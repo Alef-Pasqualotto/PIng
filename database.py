@@ -92,6 +92,12 @@ def delete_class(class_id: int) -> bool:
     with get_connection() as conn:
         cur = conn.execute("DELETE FROM classes WHERE id = ?", (class_id,))
         return cur.rowcount > 0
+    
+def get_class_by_session(session_id: int) -> sqlite3.Row | None:
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT class_id FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
 
 
 # ---------------------------------------------------------------------------
@@ -285,12 +291,25 @@ def is_enrolled(class_id: int, student_id: int) -> bool:
 # Attendance
 # ---------------------------------------------------------------------------
 
-def record_checkin(session_id: int, student_id: int) -> sqlite3.Row:
+def record_checkin(session_id: int, student_id: int) -> sqlite3.Row | None:
     """
-    Records a check-in. If the student already has a record for this session
+    Records a check-in.
+    If the student already has a record for this session
     (e.g. they refreshed the page), returns the existing one unchanged.
+    If the student is not enrolled in the class, it can't check-in
     """
     with get_connection() as conn:
+        
+        # Verify if the studend is enrolled in the class of the session
+        class_found = get_class_by_session(session_id)
+        if class_found is None:
+            return None
+        
+        enrolled = is_enrolled(class_found["id"], student_id)
+        if not enrolled:
+            return None
+        
+
         conn.execute(
             """
             INSERT INTO attendance (session_id, student_id)
@@ -306,8 +325,7 @@ def record_checkin(session_id: int, student_id: int) -> sqlite3.Row:
 
 
 def get_attendance_for_session(session_id: int) -> list[sqlite3.Row]:
-    """Returns all attendance records for a session, joined with student info.
-    Includes is_enrolled so the dashboard can distinguish enrolled vs guest."""
+    """Returns all attendance records for a session, joined with student info."""
     with get_connection() as conn:
         session = conn.execute(
             "SELECT class_id FROM sessions WHERE id = ?", (session_id,)
@@ -339,12 +357,11 @@ def get_attendance_for_session(session_id: int) -> list[sqlite3.Row]:
 def get_full_session_roster(session_id: int) -> list[dict]:
     """
     Returns the complete picture for a session:
-      - Enrolled students who checked in    (present=1, is_guest=0)
-      - Enrolled students who did NOT check in (present=0, is_guest=0)
-      - Non-enrolled students who checked in  (present=1, is_guest=1)
+      - Enrolled students who checked in    (present=1)
+      - Enrolled students who did NOT check in (present=0)
 
     Each entry has: attendance_id, student_id, student_name, device_id,
-                    present, checked_in_at, is_enrolled, is_guest,
+                    present, checked_in_at, is_enrolled,
                     overridden_by_teacher
     """
     with get_connection() as conn:
@@ -366,8 +383,7 @@ def get_full_session_roster(session_id: int) -> list[dict]:
                 COALESCE(a.present, 0)            AS present,
                 a.checked_in_at,
                 COALESCE(a.overridden_by_teacher, 0) AS overridden_by_teacher,
-                1                 AS is_enrolled,
-                0                 AS is_guest
+                1                 AS is_enrolled
             FROM enrollments e
             JOIN students s ON s.id = e.student_id
             LEFT JOIN attendance a
@@ -378,30 +394,7 @@ def get_full_session_roster(session_id: int) -> list[dict]:
             (session_id, class_id)
         ).fetchall()
 
-        # Guests: checked in but not enrolled in this class
-        guests = conn.execute(
-            """
-            SELECT
-                a.id              AS attendance_id,
-                s.id              AS student_id,
-                s.name            AS student_name,
-                s.device_id,
-                a.present,
-                a.checked_in_at,
-                a.overridden_by_teacher,
-                0                 AS is_enrolled,
-                1                 AS is_guest
-            FROM attendance a
-            JOIN students s ON s.id = a.student_id
-            LEFT JOIN enrollments e
-                ON e.student_id = s.id AND e.class_id = ?
-            WHERE a.session_id = ? AND e.student_id IS NULL
-            ORDER BY a.checked_in_at
-            """,
-            (class_id, session_id)
-        ).fetchall()
-
-        return [dict(r) for r in enrolled] + [dict(r) for r in guests]
+        return [dict(r) for r in enrolled]
 
 
 def override_attendance(attendance_id: int, present: bool) -> bool:
@@ -419,7 +412,7 @@ def override_attendance(attendance_id: int, present: bool) -> bool:
 
 
 def export_session_csv(session_id: int) -> str:
-    """Returns a CSV string of the full session roster, including absences and guests."""
+    """Returns a CSV string of the full session roster, including absences."""
     roster = get_full_session_roster(session_id)
     session = get_session(session_id)
 
@@ -433,7 +426,6 @@ def export_session_csv(session_id: int) -> str:
         "device_id",
         "present",
         "is_enrolled",
-        "is_guest",
         "checked_in_at",
         "overridden_by_teacher",
         "session_date",
@@ -447,7 +439,6 @@ def export_session_csv(session_id: int) -> str:
             r["device_id"],
             "yes" if r["present"] else "no",
             "yes" if r["is_enrolled"] else "no",
-            "yes" if r["is_guest"] else "no",
             r["checked_in_at"] or "—",
             "yes" if r["overridden_by_teacher"] else "no",
             session["date"] if session else "—",

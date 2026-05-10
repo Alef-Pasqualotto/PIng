@@ -22,7 +22,6 @@ def create_hotspot(ssid: str = SSID, password: str = PASSWORD) -> None:
     Raises RuntimeError on unsupported OS or command failure.
     """
     system = _system()
-    print("chamou inicializacao")
     if system == "Linux":
         _run([
             "nmcli", "device", "wifi", "hotspot",
@@ -32,6 +31,7 @@ def create_hotspot(ssid: str = SSID, password: str = PASSWORD) -> None:
         ])
 
     elif system == "Windows":
+        print("windows")
         _run(["netsh", "wlan", "set", "hostednetwork",
               "mode=allow", f"ssid={ssid}", f"key={password}"])
         _run(["netsh", "wlan", "start", "hostednetwork"])

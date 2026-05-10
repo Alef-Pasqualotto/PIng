@@ -15,7 +15,6 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("lifespan")
     # startup
     database.init_db()
     try:
@@ -70,7 +69,6 @@ class StudentNameBody(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def student_page(request: Request):
-    print("student_page")
     """Serves the student check-in page."""
     classes = database.get_all_classes()
     return templates.TemplateResponse(
