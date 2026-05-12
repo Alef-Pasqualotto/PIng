@@ -305,7 +305,7 @@ def record_checkin(session_id: int, student_id: int) -> sqlite3.Row | None:
         if class_found is None:
             return None
         
-        enrolled = is_enrolled(class_found["id"], student_id)
+        enrolled = is_enrolled(class_found["class_id"], student_id)
         if not enrolled:
             return None
         

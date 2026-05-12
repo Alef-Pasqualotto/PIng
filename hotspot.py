@@ -29,12 +29,18 @@ def create_hotspot(ssid: str = SSID, password: str = PASSWORD) -> None:
             "ssid",   ssid,
             "password", password,
         ])
-
+# In hotspot.py, replace the Windows block in create_hotspot() with:
     elif system == "Windows":
-        print("windows")
-        _run(["netsh", "wlan", "set", "hostednetwork",
-              "mode=allow", f"ssid={ssid}", f"key={password}"])
-        _run(["netsh", "wlan", "start", "hostednetwork"])
+        _run([
+            "powershell", "-Command",
+            "Start-Process ms-settings:network-mobilehotspot"
+        ])
+        print("[hotspot] Please enable the mobile hotspot manually in the Settings window that opened.")
+    # elif system == "Windows":
+    #     print("windows")
+    #     _run(["netsh", "wlan", "set", "hostednetwork",
+    #           "mode=allow", f"ssid={ssid}", f"key={password}"])
+    #     _run(["netsh", "wlan", "start", "hostednetwork"])
 
     else:
         raise RuntimeError(f"Unsupported OS for hotspot creation: {system}")

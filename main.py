@@ -63,6 +63,11 @@ class StudentNameBody(BaseModel):
     name: str
 
 
+@app.get("/test", response_class=HTMLResponse)
+def test_page(request: Request):
+    """Serve just to verify if the localhost is working"""
+    return "asdf"
+
 # ---------------------------------------------------------------------------
 # Student routes
 # ---------------------------------------------------------------------------
