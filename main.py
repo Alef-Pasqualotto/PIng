@@ -8,10 +8,12 @@ import io
 import database
 import hotspot
 from contextlib import asynccontextmanager
+from sqlite3 import IntegrityError
 
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,6 +36,10 @@ app = FastAPI(title="PIng teste App", lifespan=lifespan)
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    raise HTTPException(status_code=409, detail=str(exc))
 
 # ---------------------------------------------------------------------------
 # Pydantic models (request bodies)
@@ -112,7 +118,6 @@ def checkin(body: CheckinBody):
         "session_id": session["id"],
         "attendance_id": record["id"],
         "is_enrolled": enrolled,
-        "is_guest": not enrolled,
     }
 
 
@@ -191,7 +196,7 @@ def close_session(body: SessionCloseBody):
 def session_roster(session_id: int):
     """
     Returns the full roster for a session:
-    enrolled present, enrolled absent, and guests.
+    enrolled present and enrolled absent.
     """
     session = database.get_session(session_id)
     if session is None:
@@ -278,7 +283,7 @@ def unenroll_student(body: EnrollBody):
 
 @app.get("/students")
 def list_students():
-    """Lists all students known to the system (enrolled anywhere or guests)."""
+    """Lists all students known to the system (enrolled anywhere)."""
     students = database.get_all_students()
     return [dict(s) for s in students]
 
