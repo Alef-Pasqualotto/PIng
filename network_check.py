@@ -448,7 +448,7 @@ def print_summary(port: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Diagnose local server network reachability on Windows.")
-    parser.add_argument("--port", type=int, default=8080, help="Server port (default: 8080)")
+    parser.add_argument("--port", type=int, default=8000, help="Server port (default: 8000)")
     parser.add_argument("--fix",  action="store_true",   help="Auto-fix firewall issues (requires Administrator)")
     args = parser.parse_args()
 

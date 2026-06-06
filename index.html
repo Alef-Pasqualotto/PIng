@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PIng — Attendance Register for Teachers</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #0f1b2d;
+      --navy-2: #162439;
+      --slate:  #2e4a6e;
+      --green:  #3dba7e;
+      --green-dim: #2a9463;
+      --cream:  #f5f2ed;
+      --warm:   #e8e3db;
+      --muted:  #8fa3b8;
+      --white:  #ffffff;
+      --radius: 6px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--navy);
+      color: var(--cream);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── GRID CANVAS ── */
+    #grid-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.35;
+    }
+
+    /* ── LAYOUT ── */
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2rem 3rem;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .logo {
+      font-family: 'DM Mono', monospace;
+      font-size: 1.15rem;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      color: var(--white);
+      text-decoration: none;
+    }
+
+    .logo span {
+      color: var(--green);
+    }
+
+    .nav-tag {
+      font-size: 0.72rem;
+      font-weight: 300;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── HERO ── */
+    .hero {
+      padding: 5rem 0 4rem;
+      text-align: center;
+    }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 2.2rem;
+      opacity: 0;
+      animation: fadeUp 0.7s ease 0.2s forwards;
+    }
+
+    .hero-eyebrow::before,
+    .hero-eyebrow::after {
+      content: '';
+      display: block;
+      width: 28px;
+      height: 1px;
+      background: var(--green);
+      opacity: 0.5;
+    }
+
+    h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(2.8rem, 6vw, 4.4rem);
+      font-weight: 400;
+      line-height: 1.08;
+      letter-spacing: -0.01em;
+      color: var(--white);
+      margin-bottom: 1.6rem;
+      opacity: 0;
+      animation: fadeUp 0.7s ease 0.35s forwards;
+    }
+
+    h1 em {
+      font-style: italic;
+      color: var(--green);
+    }
+
+    .hero-sub {
+      font-size: 1.05rem;
+      font-weight: 300;
+      line-height: 1.7;
+      color: var(--muted);
+      max-width: 520px;
+      margin: 0 auto 3rem;
+      opacity: 0;
+      animation: fadeUp 0.7s ease 0.5s forwards;
+    }
+
+    /* ── DOWNLOAD BUTTON ── */
+    .download-wrap {
+      opacity: 0;
+      animation: fadeUp 0.7s ease 0.65s forwards;
+    }
+
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.85rem;
+      background: var(--green);
+      color: var(--navy);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.95rem;
+      letter-spacing: 0.02em;
+      padding: 1rem 2rem;
+      border-radius: var(--radius);
+      transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 24px rgba(61,186,126,0.25);
+    }
+
+    .btn-download:hover {
+      background: #4dd68e;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(61,186,126,0.35);
+    }
+
+    .btn-download:active {
+      transform: translateY(0);
+    }
+
+    .btn-download svg {
+      flex-shrink: 0;
+    }
+
+    .btn-meta {
+      display: block;
+      margin-top: 0.9rem;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.67rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── DIVIDER ── */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--slate), transparent);
+      margin: 4.5rem 0;
+      opacity: 0;
+      animation: fadeIn 1s ease 1s forwards;
+    }
+
+    /* ── FEATURES ── */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 2rem;
+      margin-bottom: 5rem;
+    }
+
+    .feature {
+      opacity: 0;
+      animation: fadeUp 0.6s ease forwards;
+    }
+
+    .feature:nth-child(1) { animation-delay: 0.9s; }
+    .feature:nth-child(2) { animation-delay: 1.05s; }
+    .feature:nth-child(3) { animation-delay: 1.2s; }
+
+    .feature-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(61,186,126,0.1);
+      border: 1px solid rgba(61,186,126,0.2);
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .feature h3 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.05rem;
+      font-weight: 400;
+      color: var(--white);
+      margin-bottom: 0.45rem;
+    }
+
+    .feature p {
+      font-size: 0.875rem;
+      font-weight: 300;
+      line-height: 1.65;
+      color: var(--muted);
+    }
+
+    /* ── TRUST BAR ── */
+    .trust-bar {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      padding: 1.6rem 2rem;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      margin-bottom: 5rem;
+      flex-wrap: wrap;
+      opacity: 0;
+      animation: fadeUp 0.6s ease 1.4s forwards;
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.8rem;
+      font-weight: 300;
+      color: var(--muted);
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .trust-item svg { flex-shrink: 0; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding: 2rem 0 3rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      opacity: 0;
+      animation: fadeIn 0.6s ease 1.6s forwards;
+    }
+
+    .footer-logo {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .footer-logo span { color: var(--green); }
+
+    footer a {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    footer a:hover { color: var(--green); }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    /* ── DOT PING ANIMATION ── */
+    @keyframes ping {
+      0%   { r: 1.5; opacity: 0.9; }
+      60%  { r: 5; opacity: 0.2; }
+      100% { r: 1.5; opacity: 0; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Animated dot-grid background -->
+  <canvas id="grid-canvas"></canvas>
+
+  <!-- NAV -->
+  <nav>
+    <a href="#" class="logo">PI<span>ng</span></a>
+    <span class="nav-tag">Attendance Register</span>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="wrap">
+
+    <!-- HERO -->
+    <section class="hero">
+      <div class="hero-eyebrow">Free &amp; Open Source</div>
+
+      <h1>Know who's<br/><em>present</em>, always.</h1>
+
+      <p class="hero-sub">
+        PIng is a lightweight attendance register built for teachers.
+        Mark presence, track absences, and keep your class records in
+        order — no account, no cloud, no friction.
+      </p>
+
+      <div class="download-wrap">
+        <a
+          class="btn-download"
+          href="https://github.com/your-org/ping/releases/latest"
+          target="_blank"
+          rel="noopener"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download PIng
+        </a>
+        <span class="btn-meta">Free · Windows · macOS · Linux</span>
+      </div>
+    </section>
+
+    <!-- DIVIDER -->
+    <div class="divider"></div>
+
+    <!-- FEATURES -->
+    <section class="features">
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3dba7e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <h3>Class Lists, Instantly</h3>
+        <p>Import your class roster and start taking attendance on day one. No setup overhead.</p>
+      </div>
+
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3dba7e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+        </div>
+        <h3>Session History</h3>
+        <p>Every class session is logged. Review attendance patterns across weeks and months at a glance.</p>
+      </div>
+
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3dba7e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+        </div>
+        <h3>Offline-First</h3>
+        <p>Works entirely on your device. No internet required in class, no data ever leaves your machine.</p>
+      </div>
+    </section>
+
+    <!-- TRUST BAR -->
+    <div class="trust-bar">
+      <div class="trust-item">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3dba7e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        No account required
+      </div>
+      <div class="trust-item">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3dba7e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Open source on GitHub
+      </div>
+      <div class="trust-item">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3dba7e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        Student data stays local
+      </div>
+      <div class="trust-item">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3dba7e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2"/>
+          <path d="M8 21h8M12 17v4"/>
+        </svg>
+        Free forever
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer>
+      <div class="footer-logo">PI<span>ng</span></div>
+      <div style="display:flex; gap:1.8rem; flex-wrap:wrap;">
+        <a href="https://github.com/your-org/ping" target="_blank" rel="noopener">GitHub →</a>
+        <a href="https://github.com/your-org/ping/issues" target="_blank" rel="noopener">Report an issue</a>
+        <a href="https://github.com/your-org/ping/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+      </div>
+    </footer>
+
+  </main>
+
+  <!-- CANVAS SCRIPT -->
+  <script>
+    const canvas = document.getElementById('grid-canvas');
+    const ctx = canvas.getContext('2d');
+    const DOT_COLOR = '61,186,126';
+
+    let W, H, cols, rows, dots = [], pings = [];
+
+    function resize() {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      const gap = 48;
+      cols = Math.ceil(W / gap) + 1;
+      rows = Math.ceil(H / gap) + 1;
+      dots = [];
+      for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+          dots.push({ x: c * gap, y: r * gap });
+        }
+      }
+    }
+
+    function addPing() {
+      const d = dots[Math.floor(Math.random() * dots.length)];
+      pings.push({ x: d.x, y: d.y, r: 1.5, opacity: 0.9, speed: 0.06 + Math.random() * 0.04 });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Static dots
+      for (const d of dots) {
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 1.2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${DOT_COLOR},0.18)`;
+        ctx.fill();
+      }
+
+      // Animated pings
+      for (let i = pings.length - 1; i >= 0; i--) {
+        const p = pings[i];
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${DOT_COLOR},${p.opacity.toFixed(2)})`;
+        ctx.fill();
+
+        p.r += p.speed * 5;
+        p.opacity -= p.speed * 0.7;
+
+        if (p.opacity <= 0) pings.splice(i, 1);
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+    draw();
+
+    // Ping rhythm — feels like checking attendance
+    setInterval(addPing, 420);
+    // Burst on load
+    for (let i = 0; i < 8; i++) setTimeout(addPing, i * 120);
+  </script>
+
+</body>
+</html>
