@@ -29,7 +29,9 @@ def isolated_db(tmp_path, monkeypatch):
     """
     db_file = tmp_path / "test_attendance.db"
     import database
+    import settings
     monkeypatch.setattr(database, "DB_PATH", db_file)
+    monkeypatch.setattr(settings, "config_path", lambda: tmp_path / "config.json")
     database.init_db()
     yield db_file
 
@@ -329,6 +331,15 @@ class TestAttendance:
         import database
         assert database.override_attendance(9999, True) is False
 
+    def test_teacher_can_mark_absent_student_present(self):
+        import database
+        cls = make_class()
+        student = make_enrolled_student(cls["id"])
+        session = database.open_session(cls["id"])
+        record = database.set_student_attendance(session["id"], student["id"], True)
+        assert record["present"] == 1
+        assert record["overridden_by_teacher"] == 1
+
     def test_get_full_session_roster_absent_students_included(self):
         import database
         cls = make_class()
@@ -397,6 +408,12 @@ class TestStudentRoutes:
         r = client.get("/")
         assert r.status_code == 200
         assert "text/html" in r.headers["content-type"]
+
+    def test_public_classes(self, client):
+        make_class("Turma pública")
+        r = client.get("/public/classes")
+        assert r.status_code == 200
+        assert r.json()[0]["name"] == "Turma pública"
 
     def test_checkin_success(self, client):
         import database
@@ -535,6 +552,77 @@ class TestAttendanceOverrideRoute:
     def test_override_nonexistent(self, client):
         r = client.patch("/attendance/9999", json={"present": True})
         assert r.status_code == 404
+
+    def test_create_override_for_absent_student(self, client):
+        import database
+        cls = make_class()
+        student = make_enrolled_student(cls["id"])
+        session = database.open_session(cls["id"])
+        r = client.put(
+            f"/session/{session['id']}/students/{student['id']}/attendance",
+            json={"present": True},
+        )
+        assert r.status_code == 200
+        assert r.json()["present"] is True
+
+
+class TestNetworkRoutes:
+    def test_network_status(self, client):
+        with patch("network_service.compatibility", return_value={"supported": True, "detail": "ok"}), \
+             patch("hotspot.get_local_ip", return_value="192.168.1.10"):
+            r = client.get("/api/network/status")
+        assert r.status_code == 200
+        assert r.json()["student_url"].startswith("http://192.168.1.10:")
+
+    def test_network_start_failure_is_reported(self, client):
+        with patch("network_service.start", side_effect=RuntimeError("sem suporte")):
+            r = client.post("/api/network/start")
+        assert r.status_code == 503
+        assert "sem suporte" in r.json()["detail"]
+
+    def test_network_start_stops_before_netsh_when_unsupported(self):
+        with patch("network_service.compatibility", return_value={
+            "supported": False,
+            "wireless_present": False,
+            "reason": "no_wireless_adapter",
+            "detail": "Nenhum adaptador Wi-Fi está disponível.",
+        }), patch("hotspot.create_hotspot") as create:
+            with pytest.raises(RuntimeError, match="Nenhum adaptador"):
+                import network_service
+                network_service.start()
+        create.assert_not_called()
+
+    def test_network_qr_is_png(self, client):
+        with patch("network_service.status", return_value={"student_url": "http://192.168.1.10:8000"}):
+            r = client.get("/api/network/qr")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "image/png"
+
+
+class TestAdminAccess:
+    def test_remote_client_cannot_use_teacher_api(self, isolated_db):
+        import main
+        with TestClient(main.app, client=("192.168.1.50", 50000)) as remote:
+            assert remote.get("/classes").status_code == 403
+            assert remote.get("/teacher").status_code == 403
+
+    def test_remote_client_can_use_student_routes(self, isolated_db):
+        import main
+        with TestClient(main.app, client=("192.168.1.50", 50000)) as remote:
+            assert remote.get("/").status_code == 200
+            assert remote.get("/public/classes").status_code == 200
+
+
+class TestDebugLogging:
+    def test_log_info_is_local_and_returns_path(self, client):
+        r = client.get("/api/debug/log-info")
+        assert r.status_code == 200
+        assert r.json()["path"].endswith("ping.log")
+
+    def test_log_info_is_blocked_remotely(self, isolated_db):
+        import main
+        with TestClient(main.app, client=("192.168.1.50", 50000)) as remote:
+            assert remote.get("/api/debug/log-info").status_code == 403
 
 
 class TestCSVExportRoute:

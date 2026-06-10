@@ -2,8 +2,9 @@ import sqlite3
 import csv
 import io
 from pathlib import Path
+from app_paths import database_path
 
-DB_PATH = Path(__file__).parent / "attendance.db"
+DB_PATH = database_path()
 
 
 def get_connection() -> sqlite3.Connection:
@@ -19,6 +20,7 @@ def get_connection() -> sqlite3.Connection:
 
 def init_db() -> None:
     """Create all tables if they don't exist yet."""
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS classes (
@@ -409,6 +411,29 @@ def override_attendance(attendance_id: int, present: bool) -> bool:
             (1 if present else 0, attendance_id)
         )
         return cur.rowcount > 0
+
+
+def set_student_attendance(session_id: int, student_id: int, present: bool) -> sqlite3.Row | None:
+    """Creates or updates an attendance row for an enrolled student."""
+    class_row = get_class_by_session(session_id)
+    if class_row is None or not is_enrolled(class_row["class_id"], student_id):
+        return None
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO attendance (
+                session_id, student_id, present, overridden_by_teacher
+            ) VALUES (?, ?, ?, 1)
+            ON CONFLICT(session_id, student_id) DO UPDATE SET
+                present = excluded.present,
+                overridden_by_teacher = 1
+            """,
+            (session_id, student_id, 1 if present else 0),
+        )
+        return conn.execute(
+            "SELECT * FROM attendance WHERE session_id = ? AND student_id = ?",
+            (session_id, student_id),
+        ).fetchone()
 
 
 def export_session_csv(session_id: int) -> str:

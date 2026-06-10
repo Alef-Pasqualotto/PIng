@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PIng - Painel do professor</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand sidebar-brand"><span class="brand-mark">PI</span>ng</div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard">Visão geral</button>
+        <button class="nav-item" data-view="students">Estudantes</button>
+        <button class="nav-item" data-view="history">Histórico</button>
+        <button class="nav-item" data-view="network">Rede da sala</button>
+      </nav>
+      <div class="sidebar-foot"><span id="server-dot" class="dot ok"></span> Servidor local ativo</div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div><p class="eyebrow">PAINEL DO PROFESSOR</p><h1 id="view-title">Visão geral</h1></div>
+        <div id="toast" class="toast" aria-live="polite"></div>
+      </header>
+
+      <section id="view-dashboard" class="view active">
+        <div class="grid two">
+          <article class="card network-summary">
+            <div class="card-head"><div><p class="eyebrow">ACESSO DOS ESTUDANTES</p><h2>Rede da sala</h2></div><span id="network-badge" class="badge neutral">Verificando</span></div>
+            <div class="network-address"><img id="network-qr" class="qr" src="/api/network/qr" alt="QR Code do endereço dos estudantes"><p id="student-url" class="url">Carregando...</p></div>
+            <p id="network-hint" class="muted">Os estudantes devem abrir este endereço no celular.</p>
+            <div class="actions"><button id="copy-url" class="secondary">Copiar endereço</button><button id="network-shortcut" class="secondary">Configurar rede</button></div>
+          </article>
+          <article class="card">
+            <p class="eyebrow">TURMA ATUAL</p>
+            <div class="class-picker-row"><select id="class-picker"></select><button id="add-class" class="icon-button" title="Criar turma">+</button><button id="delete-class" class="icon-button danger" title="Excluir turma">×</button></div>
+            <div id="session-panel" class="session-panel">
+              <h2 id="session-title">Nenhuma turma selecionada</h2>
+              <p id="session-description" class="muted">Crie ou selecione uma turma para iniciar.</p>
+              <button id="session-button" class="primary" disabled>Abrir chamada</button>
+            </div>
+          </article>
+        </div>
+        <article class="card roster-card">
+          <div class="card-head"><div><p class="eyebrow">CHAMADA AO VIVO</p><h2>Lista de presença</h2></div><div class="counts"><span><strong id="present-count">0</strong> presentes</span><span><strong id="absent-count">0</strong> ausentes</span></div></div>
+          <div id="roster-empty" class="empty">Abra uma chamada para acompanhar as presenças.</div>
+          <div id="roster-list" class="table-list"></div>
+        </article>
+      </section>
+
+      <section id="view-students" class="view">
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">CADASTRO</p><h2>Estudantes conhecidos</h2></div><select id="enrollment-class"></select></div>
+          <p class="muted">O estudante aparece aqui após acessar a página de presença pela primeira vez. Edite o nome e matricule-o na turma selecionada.</p>
+          <div id="students-list" class="table-list"></div>
+        </article>
+      </section>
+
+      <section id="view-history" class="view">
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">REGISTROS</p><h2>Histórico de chamadas</h2></div><select id="history-class"></select></div>
+          <div id="history-list" class="table-list"></div>
+        </article>
+      </section>
+
+      <section id="view-network" class="view">
+        <div class="grid two">
+          <article class="card">
+            <p class="eyebrow">HOTSPOT DO WINDOWS</p><h2>Rede criada pelo computador</h2>
+            <div id="compatibility" class="status neutral">Verificando compatibilidade...</div>
+            <label for="ssid">Nome da rede</label><input id="ssid" maxlength="32">
+            <label for="password">Senha</label><input id="password" minlength="8" maxlength="63" type="password">
+            <div class="actions"><button id="save-network" class="secondary">Salvar</button><button id="toggle-network" class="primary">Iniciar hotspot</button><button id="windows-hotspot" class="secondary">Abrir Hotspot Móvel do Windows</button></div>
+          </article>
+          <article class="card">
+            <p class="eyebrow">MODO ALTERNATIVO</p><h2>Wi-Fi ou cabo existente</h2>
+            <p class="muted">Se o hotspot não funcionar, conecte o computador e os celulares à mesma rede. O endereço abaixo continuará válido.</p>
+            <p id="network-url-detail" class="url">Carregando...</p>
+            <ol class="instructions"><li>Conecte todos os dispositivos à mesma rede.</li><li>Mantenha o PIng aberto.</li><li>Abra o endereço acima nos celulares.</li></ol>
+          </article>
+          <article class="card">
+            <p class="eyebrow">DIAGNÓSTICO LOCAL</p><h2>Logs de depuração</h2>
+            <p class="muted">Erros, requisições, inicialização e comandos de rede são registrados com rotação automática.</p>
+            <p id="log-path" class="url">Carregando...</p>
+            <div class="actions"><button id="open-logs" class="secondary">Abrir pasta de logs</button><button id="copy-log-path" class="secondary">Copiar caminho</button></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="modal"><form method="dialog"><h2 id="modal-title"></h2><p id="modal-text" class="muted"></p><input id="modal-input"><div class="actions end"><button value="cancel" class="secondary">Cancelar</button><button id="modal-confirm" value="default" class="primary">Confirmar</button></div></form></dialog>
+  <script src="/static/teacher.js"></script>
+</body>
+</html>

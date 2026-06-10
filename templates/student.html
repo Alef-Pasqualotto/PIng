@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PIng - Registrar presença</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="student-page">
+  <main class="student-shell">
+    <div class="brand"><span class="brand-mark">PI</span>ng</div>
+    <section class="student-card">
+      <p class="eyebrow">CHAMADA DIGITAL</p>
+      <h1>Registre sua presença</h1>
+      <p class="muted">Selecione a turma e confirme. Este dispositivo será reconhecido nas próximas chamadas.</p>
+      <label for="class-select">Turma</label>
+      <select id="class-select"><option value="">Carregando turmas...</option></select>
+      <div id="session-state" class="status neutral">Selecione uma turma.</div>
+      <button id="checkin-button" class="primary wide" disabled>Confirmar presença</button>
+      <div id="student-message" class="message" aria-live="polite"></div>
+    </section>
+    <p class="student-foot">Se sua turma não aparecer, peça ao professor para verificar a rede.</p>
+  </main>
+  <script src="/static/student.js"></script>
+</body>
+</html>
