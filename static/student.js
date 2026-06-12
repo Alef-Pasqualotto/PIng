@@ -2,6 +2,7 @@ const select = document.querySelector('#class-select');
 const button = document.querySelector('#checkin-button');
 const stateBox = document.querySelector('#session-state');
 const message = document.querySelector('#student-message');
+const deviceText = document.querySelector('#student-device');
 
 function deviceId() {
   let id = localStorage.getItem('ping-device-id');
@@ -10,6 +11,10 @@ function deviceId() {
     localStorage.setItem('ping-device-id', id);
   }
   return id;
+}
+
+async function displayDeviceId(){
+  deviceText.textContent = 'Nome do dispositivo: ' + deviceId();
 }
 
 async function api(url, options) {
@@ -44,6 +49,7 @@ async function updateStatus() {
 
 button.addEventListener('click', async () => {
   button.disabled = true; button.textContent = 'Confirmando...';
+  
   try {
     const data = await api('/checkin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({device_id: deviceId(), class_id: Number(select.value)})});
     if (!data.is_enrolled) {
@@ -51,11 +57,13 @@ button.addEventListener('click', async () => {
     } else {
       message.className = 'message success-text'; message.textContent = 'Presença confirmada. Você pode fechar esta página.';
     }
+    console.log(data)
   } catch (error) { message.className = 'message error-text'; message.textContent = error.message; }
-  button.textContent = 'Confirmar presença'; await updateStatus();
+  button.textContent = 'Confirmar presença';
 });
 
 select.addEventListener('change', updateStatus);
 setInterval(updateStatus, 5000);
 function escapeHtml(value) { const el = document.createElement('span'); el.textContent = value ?? ''; return el.innerHTML; }
 loadClasses();
+displayDeviceId();

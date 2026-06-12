@@ -31,7 +31,7 @@
             <div class="card-head"><div><p class="eyebrow">ACESSO DOS ESTUDANTES</p><h2>Rede da sala</h2></div><span id="network-badge" class="badge neutral">Verificando</span></div>
             <div class="network-address"><img id="network-qr" class="qr" src="/api/network/qr" alt="QR Code do endereço dos estudantes"><p id="student-url" class="url">Carregando...</p></div>
             <p id="network-hint" class="muted">Os estudantes devem abrir este endereço no celular.</p>
-            <div class="actions"><button id="copy-url" class="secondary">Copiar endereço</button><button id="network-shortcut" class="secondary">Configurar rede</button></div>
+            <div class="actions"><button id="network-shortcut" class="secondary">Configurar rede</button></div>
           </article>
           <article class="card">
             <p class="eyebrow">TURMA ATUAL</p>
@@ -44,7 +44,8 @@
           </article>
         </div>
         <article class="card roster-card">
-          <div class="card-head"><div><p class="eyebrow">CHAMADA AO VIVO</p><h2>Lista de presença</h2></div><div class="counts"><span><strong id="present-count">0</strong> presentes</span><span><strong id="absent-count">0</strong> ausentes</span></div></div>
+          <div class="card-head"><div><p class="eyebrow">CHAMADA AO VIVO</p><h2>Lista de presença</h2></div><div style="display:flex;gap:12px;align-items:center"><div class="counts"><span><strong id="present-count">0</strong> presentes</span><span><strong id="absent-count">0</strong> ausentes</span></div><button id="kbd-mode-roster" class="secondary" disabled>⌨ Chamada rápida</button></div></div>
+          <div id="kbd-hint-roster" class="kbd-hint" hidden><kbd>Enter</kbd> presente &nbsp; <kbd>Backspace</kbd> ausente &nbsp; <kbd>Tab</kbd> pular</div>
           <div id="roster-empty" class="empty">Abra uma chamada para acompanhar as presenças.</div>
           <div id="roster-list" class="table-list"></div>
         </article>
@@ -54,6 +55,7 @@
         <article class="card">
           <div class="card-head"><div><p class="eyebrow">CADASTRO</p><h2>Estudantes conhecidos</h2></div><select id="enrollment-class"></select></div>
           <p class="muted">O estudante aparece aqui após acessar a página de presença pela primeira vez. Edite o nome e matricule-o na turma selecionada.</p>
+          <input id="student-search" type="search" placeholder="Buscar por nome ou device ID…" style="margin-bottom:14px">
           <div id="students-list" class="table-list"></div>
         </article>
       </section>
@@ -62,6 +64,11 @@
         <article class="card">
           <div class="card-head"><div><p class="eyebrow">REGISTROS</p><h2>Histórico de chamadas</h2></div><select id="history-class"></select></div>
           <div id="history-list" class="table-list"></div>
+        </article>
+        <article id="history-roster-card" class="card" hidden>
+          <div class="card-head"><div><p class="eyebrow">DETALHES DA CHAMADA</p><h2 id="history-roster-title">Lista de presença</h2></div><div style="display:flex;gap:12px;align-items:center"><div class="counts"><span><strong id="history-present-count">0</strong> presentes</span><span><strong id="history-absent-count">0</strong> ausentes</span></div><button id="kbd-mode-history" class="secondary">⌨ Chamada rápida</button></div></div>
+          <div id="kbd-hint-history" class="kbd-hint" hidden><kbd>Enter</kbd> presente &nbsp; <kbd>Backspace</kbd> ausente &nbsp; <kbd>Tab</kbd> pular</div>
+          <div id="history-roster-list" class="table-list"></div>
         </article>
       </section>
 
@@ -84,7 +91,7 @@
             <p class="eyebrow">DIAGNÓSTICO LOCAL</p><h2>Logs de depuração</h2>
             <p class="muted">Erros, requisições, inicialização e comandos de rede são registrados com rotação automática.</p>
             <p id="log-path" class="url">Carregando...</p>
-            <div class="actions"><button id="open-logs" class="secondary">Abrir pasta de logs</button><button id="copy-log-path" class="secondary">Copiar caminho</button></div>
+            <div class="actions"><button id="open-logs" class="secondary">Abrir pasta de logs</button></div>
           </article>
         </div>
       </section>

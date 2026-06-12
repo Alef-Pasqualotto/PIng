@@ -85,6 +85,7 @@ class TestClasses:
         import database
         database.create_class("Zebra")
         database.create_class("Alpha")
+        print("a")
         names = [c["name"] for c in database.get_all_classes()]
         assert names == sorted(names)
 

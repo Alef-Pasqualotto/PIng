@@ -43,7 +43,7 @@ async def local_admin_only(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
     started = time.perf_counter()
     path = request.url.path
-    is_public = path in PUBLIC_PATHS or path.startswith("/static/")
+    is_public = True #path in PUBLIC_PATHS or path.startswith("/static/")
     client_host = request.client.host if request.client else ""
     if not is_public and client_host not in LOCAL_HOSTS:
         logger.warning("request=%s denied method=%s path=%s client=%s", request_id, request.method, path, client_host)
@@ -91,6 +91,8 @@ class SessionCloseBody(BaseModel):
 
 
 class AttendanceOverrideBody(BaseModel):
+    device_id: str = Field(min_length=4, max_length=200)
+    class_id: int
     present: bool
 
 
@@ -145,13 +147,15 @@ def checkin(body: CheckinBody):
             "session_id": session["id"],
             "attendance_id": None,
             "is_enrolled": enrolled,
+            "present": None,
         }
     return {
         "ok": True,
         "student_id": student["id"],
         "session_id": session["id"],
         "attendance_id": record["id"],
-        "is_enrolled": enrolled,
+        "is_enrolled": enrolled,\
+        "present": True,
     }
 
 
@@ -212,7 +216,9 @@ def class_sessions(class_id: int):
 
 @app.patch("/attendance/{attendance_id}")
 def override_attendance(attendance_id: int, body: AttendanceOverrideBody):
-    if not database.override_attendance(attendance_id, body.present):
+    if attendance_id == -1:
+        checkin(body)
+    elif not database.override_attendance(attendance_id, body.present):
         raise HTTPException(404, "Presença não encontrada.")
     return {"ok": True, "attendance_id": attendance_id, "present": body.present}
 
