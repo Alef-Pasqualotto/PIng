@@ -48,6 +48,7 @@ async function loadClasses(keepSelection = true) {
     "#class-picker",
     "#enrollment-class",
     "#history-class",
+    "#grades-class",
   ]) {
     const el = $(selector);
     el.innerHTML = state.classes.length
@@ -380,10 +381,12 @@ function showView(name) {
     dashboard: "Visão geral",
     students: "Estudantes",
     history: "Histórico",
+    grades: "Avaliações",
     network: "Rede da sala",
   }[name];
   if (name === "students") loadStudents().catch((e) => toast(e.message, true));
   if (name === "history") loadHistory().catch((e) => toast(e.message, true));
+  if (name === "grades") loadGrades().catch((e) => toast(e.message, true));
   if (name === "network") loadNetwork().catch((e) => toast(e.message, true));
 }
 
@@ -495,12 +498,72 @@ document.addEventListener("click", async (event) => {
   }
   const exp = event.target.closest("[data-export-session]");
   if (exp) return exportSession(exp.dataset.exportSession);
+
+  const addTest = event.target.closest("#add-test");
+  if (addTest) {
+    const classId = Number($("#grades-class").value);
+    if (!classId) return;
+    const name = await promptModal("Criar avaliação", "Informe o nome da prova/trabalho.");
+    if (!name) return;
+    const maxScoreStr = await promptModal("Nota máxima", "Informe o valor máximo da avaliação.", "10.0");
+    const maxScore = maxScoreStr ? Number(maxScoreStr) : 10.0;
+    if (isNaN(maxScore) || maxScore <= 0) {
+      toast("Nota máxima inválida.", true);
+      return;
+    }
+    await api("/tests", {
+      method: "POST",
+      body: JSON.stringify({ class_id: classId, name, max_score: maxScore })
+    });
+    await loadGrades();
+    toast("Avaliação criada.");
+    return;
+  }
+
+  const deleteTestBtn = event.target.closest("[data-delete-test]");
+  if (deleteTestBtn) {
+    const testId = Number(deleteTestBtn.dataset.deleteTest);
+    if (!confirm("Excluir esta avaliação permanentemente? Todos os registros de notas serão apagados.")) return;
+    await api(`/tests/${testId}`, { method: "DELETE" });
+    await loadGrades();
+    toast("Avaliação excluída.");
+    return;
+  }
+
+  const editMaxBtn = event.target.closest(".edit-max-btn");
+  if (editMaxBtn) {
+    const testId = Number(editMaxBtn.dataset.editMaxTestId);
+    const testName = editMaxBtn.dataset.testName;
+    const currentMax = editMaxBtn.dataset.currentMax;
+    const newMaxStr = await promptModal(
+      `Editar nota máxima: ${testName}`,
+      `Informe a nova nota máxima para esta avaliação (nota atual: ${currentMax}).`,
+      currentMax
+    );
+    if (!newMaxStr) return;
+    const newMax = Number(newMaxStr);
+    if (isNaN(newMax) || newMax <= 0) {
+      toast("Nota máxima inválida.", true);
+      return;
+    }
+    try {
+      await api(`/tests/${testId}/max-score`, {
+        method: "PATCH",
+        body: JSON.stringify({ max_score: newMax })
+      });
+      await loadGrades();
+      toast("Nota máxima atualizada.");
+    } catch (e) {
+      toast(e.message, true);
+    }
+    return;
+  }
 });
 
 $("#class-picker").addEventListener("change", async (e) => {
   state.selectedClass = Number(e.target.value);
   document
-    .querySelectorAll("#enrollment-class,#history-class")
+    .querySelectorAll("#enrollment-class,#history-class,#grades-class")
     .forEach((x) => (x.value = state.selectedClass));
   await refreshSession();
 });
@@ -618,3 +681,178 @@ Promise.all([loadClasses(), loadNetwork()]).catch((error) =>
 );
 
 $('#network-qr').addEventListener('click', () => window.open($('#network-qr').src, '_blank'));
+
+$("#grades-class").addEventListener("change", loadGrades);
+
+document.addEventListener("change", async (event) => {
+  const gradeInput = event.target.closest(".grade-input");
+  if (gradeInput) {
+    const studentId = Number(gradeInput.dataset.studentId);
+    const testId = Number(gradeInput.dataset.testId);
+    const maxScore = Number(gradeInput.dataset.maxScore);
+    const val = gradeInput.value.trim();
+    try {
+      await updateGrade(studentId, testId, val, maxScore);
+      toast("Nota salva.");
+    } catch (e) {
+      toast(e.message, true);
+      await loadGrades();
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Grades & Tests management (Spreadsheet Grid View)
+// ---------------------------------------------------------------------------
+
+async function loadGrades() {
+  const classId = Number($("#grades-class").value);
+  if (!classId) {
+    $("#gradebook-container").innerHTML = '<div class="empty">Selecione uma turma para ver as avaliações.</div>';
+    return;
+  }
+  
+  const [students, tests] = await Promise.all([
+    api(`/classes/${classId}/students`),
+    api(`/classes/${classId}/tests`)
+  ]);
+  
+  const allGrades = await Promise.all(tests.map(t => api(`/tests/${t.id}/grades`)));
+  
+  const gradesMap = {};
+  students.forEach(s => {
+    gradesMap[s.id] = {};
+  });
+  
+  tests.forEach((t, idx) => {
+    const testGrades = allGrades[idx];
+    testGrades.forEach(g => {
+      if (gradesMap[g.student_id]) {
+        gradesMap[g.student_id][t.id] = g.score;
+      }
+    });
+  });
+  
+  if (students.length === 0) {
+    $("#gradebook-container").innerHTML = '<div class="empty">Nenhum estudante matriculado nesta turma.</div>';
+    return;
+  }
+  
+  $("#gradebook-container").innerHTML = `
+    <div class="gradebook-wrapper">
+      <table class="gradebook-table">
+        <thead>
+          <tr>
+            <th>Estudante</th>
+            ${tests.map(t => `
+              <th class="test-header" data-test-id="${t.id}">
+                <div class="test-header-content">
+                  <span class="test-name" title="${esc(t.name)}">${esc(t.name)}</span>
+                  <button class="edit-max-btn" data-edit-max-test-id="${t.id}" data-test-name="${esc(t.name)}" data-current-max="${t.max_score}" title="Editar nota máxima">
+                    Máx: ${t.max_score} ✏️
+                  </button>
+                  <button class="delete-test-btn" data-delete-test="${t.id}" title="Excluir avaliação">×</button>
+                </div>
+              </th>
+            `).join("")}
+            ${tests.length > 0 ? `<th>Total</th>` : ""}
+          </tr>
+        </thead>
+        <tbody>
+          ${students.map(s => {
+            const studentSum = tests.reduce((sum, t) => sum + (gradesMap[s.id][t.id] || 0), 0);
+            return `
+              <tr>
+                <td class="student-cell">
+                  <div class="student-name">${esc(s.name || "Nome não informado")}</div>
+                  <div class="small">${esc(s.device_id)}</div>
+                </td>
+                ${tests.map(t => {
+                  const score = gradesMap[s.id][t.id];
+                  const scoreVal = (score !== null && score !== undefined) ? score : "";
+                  return `
+                    <td class="grade-cell">
+                      <input type="number" step="0.1" min="0" max="${t.max_score}" 
+                             class="grade-input" 
+                             data-student-id="${s.id}" 
+                             data-test-id="${t.id}" 
+                             data-max-score="${t.max_score}" 
+                             value="${scoreVal}" 
+                             placeholder="—">
+                    </td>
+                  `;
+                }).join("")}
+                ${tests.length > 0 ? `
+                  <td class="total-cell" data-student-id="${s.id}" style="font-weight: 700; text-align: center; color: var(--ink);">
+                    ${studentSum.toFixed(1)}
+                  </td>
+                ` : ""}
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+        ${tests.length > 0 ? `
+          <tfoot>
+            <tr class="average-row">
+              <td>Média da Turma</td>
+              ${tests.map((t, idx) => {
+                const testGrades = allGrades[idx];
+                const scores = testGrades.map(g => g.score).filter(sc => sc !== null && sc !== undefined);
+                let avgStr = "—";
+                if (scores.length > 0) {
+                  const sum = scores.reduce((a, b) => a + b, 0);
+                  avgStr = (sum / scores.length).toFixed(1);
+                }
+                return `<td class="average-cell" data-average-test-id="${t.id}">${avgStr}</td>`;
+              }).join("")}
+              <td class="total-cell" style="font-weight: 700; text-align: center; color: var(--muted); font-size: 13px;">
+                Máx: ${tests.reduce((acc, curr) => acc + curr.max_score, 0).toFixed(1)}
+              </td>
+            </tr>
+          </tfoot>
+        ` : ""}
+      </table>
+    </div>
+  `;
+}
+
+async function updateGrade(studentId, testId, scoreVal, maxScore) {
+  const score = scoreVal === "" ? null : Number(scoreVal);
+  
+  if (score !== null) {
+    if (isNaN(score) || score < 0) {
+      toast("Nota inválida.", true);
+      return;
+    }
+    if (score > maxScore) {
+      toast(`A nota não pode superar a nota máxima (${maxScore}).`, true);
+      return;
+    }
+  }
+  
+  await api(`/tests/${testId}/students/${studentId}/grade`, {
+    method: "PUT",
+    body: JSON.stringify({ score })
+  });
+  
+  // Recalculate average for this specific test column
+  const inputs = Array.from(document.querySelectorAll(`.grade-input[data-test-id="${testId}"]`));
+  const scores = inputs.map(input => input.value === "" ? null : Number(input.value)).filter(s => s !== null);
+  const avgCell = document.querySelector(`.average-cell[data-average-test-id="${testId}"]`);
+  if (avgCell) {
+    if (scores.length === 0) {
+      avgCell.textContent = "—";
+    } else {
+      const sum = scores.reduce((a, b) => a + b, 0);
+      avgCell.textContent = (sum / scores.length).toFixed(1);
+    }
+  }
+
+  // Recalculate total for this student row
+  const studentInputs = Array.from(document.querySelectorAll(`.grade-input[data-student-id="${studentId}"]`));
+  const studentSum = studentInputs.map(input => input.value === "" ? 0 : Number(input.value)).reduce((a, b) => a + b, 0);
+  const totalCell = document.querySelector(`.total-cell[data-student-id="${studentId}"]`);
+  if (totalCell) {
+    totalCell.textContent = studentSum.toFixed(1);
+  }
+}

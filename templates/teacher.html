@@ -14,6 +14,7 @@
         <button class="nav-item active" data-view="dashboard">Visão geral</button>
         <button class="nav-item" data-view="students">Estudantes</button>
         <button class="nav-item" data-view="history">Histórico</button>
+        <button class="nav-item" data-view="grades">Avaliações</button>
         <button class="nav-item" data-view="network">Rede da sala</button>
       </nav>
       <div class="sidebar-foot"><span id="server-dot" class="dot ok"></span> Servidor local ativo</div>
@@ -44,8 +45,8 @@
           </article>
         </div>
         <article class="card roster-card">
-          <div class="card-head"><div><p class="eyebrow">CHAMADA AO VIVO</p><h2>Lista de presença</h2></div><div style="display:flex;gap:12px;align-items:center"><div class="counts"><span><strong id="present-count">0</strong> presentes</span><span><strong id="absent-count">0</strong> ausentes</span></div><button id="kbd-mode-roster" class="secondary" disabled>⌨ Chamada rápida</button></div></div>
-          <div id="kbd-hint-roster" class="kbd-hint" hidden><kbd>Enter</kbd> presente &nbsp; <kbd>Backspace</kbd> ausente &nbsp; <kbd>Tab</kbd> pular</div>
+          <div class="card-head"><div><p class="eyebrow">CHAMADA AO VIVO</p><h2>Lista de presença</h2></div><div style="display:flex;gap:12px;align-items:center"><div class="counts"><span><strong id="present-count">0</strong> presentes</span><span><strong id="absent-count">0</strong> ausentes</span><span><strong id="justified-count">0</strong> justificadas</span><span><strong id="falsified-count">0</strong> falsificadas</span></div><button id="kbd-mode-roster" class="secondary" disabled>⌨ Chamada rápida</button></div></div>
+          <div id="kbd-hint-roster" class="kbd-hint" hidden><kbd>Enter</kbd> / <kbd>P</kbd> presente &nbsp; <kbd>Backspace</kbd> / <kbd>A</kbd> ausente &nbsp; <kbd>J</kbd> justificada &nbsp; <kbd>F</kbd> falsificada &nbsp; <kbd>Tab</kbd> pular</div>
           <div id="roster-empty" class="empty">Abra uma chamada para acompanhar as presenças.</div>
           <div id="roster-list" class="table-list"></div>
         </article>
@@ -66,9 +67,25 @@
           <div id="history-list" class="table-list"></div>
         </article>
         <article id="history-roster-card" class="card" hidden>
-          <div class="card-head"><div><p class="eyebrow">DETALHES DA CHAMADA</p><h2 id="history-roster-title">Lista de presença</h2></div><div style="display:flex;gap:12px;align-items:center"><div class="counts"><span><strong id="history-present-count">0</strong> presentes</span><span><strong id="history-absent-count">0</strong> ausentes</span></div><button id="kbd-mode-history" class="secondary">⌨ Chamada rápida</button></div></div>
-          <div id="kbd-hint-history" class="kbd-hint" hidden><kbd>Enter</kbd> presente &nbsp; <kbd>Backspace</kbd> ausente &nbsp; <kbd>Tab</kbd> pular</div>
+          <div class="card-head"><div><p class="eyebrow">DETALHES DA CHAMADA</p><h2 id="history-roster-title">Lista de presença</h2></div><div style="display:flex;gap:12px;align-items:center"><div class="counts"><span><strong id="history-present-count">0</strong> presentes</span><span><strong id="history-absent-count">0</strong> ausentes</span><span><strong id="history-justified-count">0</strong> justificadas</span><span><strong id="history-falsified-count">0</strong> falsificadas</span></div><button id="kbd-mode-history" class="secondary">⌨ Chamada rápida</button></div></div>
+          <div id="kbd-hint-history" class="kbd-hint" hidden><kbd>Enter</kbd> / <kbd>P</kbd> presente &nbsp; <kbd>Backspace</kbd> / <kbd>A</kbd> ausente &nbsp; <kbd>J</kbd> justificada &nbsp; <kbd>F</kbd> falsificada &nbsp; <kbd>Tab</kbd> pular</div>
           <div id="history-roster-list" class="table-list"></div>
+        </article>
+      </section>
+
+      <section id="view-grades" class="view">
+        <article class="card" style="max-width: 100%; overflow: hidden;">
+          <div class="card-head" style="margin-bottom: 20px; flex-wrap: wrap; gap: 16px;">
+            <div>
+              <p class="eyebrow">AVALIAÇÕES</p>
+              <h2>Boletim de Notas</h2>
+            </div>
+            <div style="display:flex; gap:12px; align-items:center; margin-left: auto;">
+              <select id="grades-class"></select>
+              <button id="add-test" class="primary">Nova avaliação</button>
+            </div>
+          </div>
+          <div id="gradebook-container" style="overflow-x: auto; width: 100%;"></div>
         </article>
       </section>
 

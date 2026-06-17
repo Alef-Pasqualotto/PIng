@@ -546,12 +546,12 @@ class TestAttendanceOverrideRoute:
         s = make_enrolled_student(cls["id"])
         session = database.open_session(cls["id"])
         record = database.record_checkin(session["id"], s["id"])
-        r = client.patch(f"/attendance/{record['id']}", json={"present": False})
+        r = client.patch(f"/attendance/{record['id']}", json={"present": 0})
         assert r.status_code == 200
-        assert r.json()["present"] is False
+        assert r.json()["present"] == 0
 
     def test_override_nonexistent(self, client):
-        r = client.patch("/attendance/9999", json={"present": True})
+        r = client.patch("/attendance/9999", json={"present": 1})
         assert r.status_code == 404
 
     def test_create_override_for_absent_student(self, client):
@@ -561,10 +561,10 @@ class TestAttendanceOverrideRoute:
         session = database.open_session(cls["id"])
         r = client.put(
             f"/session/{session['id']}/students/{student['id']}/attendance",
-            json={"present": True},
+            json={"present": 1},
         )
         assert r.status_code == 200
-        assert r.json()["present"] is True
+        assert r.json()["present"] == 1
 
 
 class TestNetworkRoutes:
@@ -714,3 +714,118 @@ class TestStudentManagementRoutes:
     def test_update_student_device_nonexistent(self, client):
         r = client.patch("/students/9999/device", json={"device_id": "x"})
         assert r.status_code == 404
+
+
+class TestGradesDatabase:
+    def test_create_and_get_test(self):
+        import database
+        cls = make_class()
+        t = database.create_test(cls["id"], "Prova 1", 10.0)
+        assert t["name"] == "Prova 1"
+        assert t["max_score"] == 10.0
+        
+        tests = database.get_tests_for_class(cls["id"])
+        assert len(tests) == 1
+        assert tests[0]["id"] == t["id"]
+
+    def test_set_and_get_student_grade(self):
+        import database
+        cls = make_class()
+        s = make_enrolled_student(cls["id"])
+        t = database.create_test(cls["id"], "Prova 1", 10.0)
+        
+        # Set grade
+        assert database.set_student_grade(t["id"], s["id"], 8.5) is True
+        
+        # Get grades
+        grades = database.get_test_grades(t["id"])
+        assert len(grades) == 1
+        assert grades[0]["student_id"] == s["id"]
+        assert grades[0]["score"] == 8.5
+        
+        # Clear grade
+        assert database.set_student_grade(t["id"], s["id"], None) is True
+        grades = database.get_test_grades(t["id"])
+        assert grades[0]["score"] is None
+
+    def test_update_test_max_score(self):
+        import database
+        cls = make_class()
+        s = make_enrolled_student(cls["id"])
+        t = database.create_test(cls["id"], "Prova 1", 10.0)
+        
+        # Update max score
+        assert database.update_test_max_score(t["id"], 15.0) is True
+        assert database.get_test(t["id"])["max_score"] == 15.0
+        
+        # Set a grade equal to 12.0
+        database.set_student_grade(t["id"], s["id"], 12.0)
+        
+        # Trying to update max score to 10.0 should fail because grade 12.0 exists
+        try:
+            database.update_test_max_score(t["id"], 10.0)
+            assert False, "Should raise ValueError"
+        except ValueError as e:
+            assert "Existem notas" in str(e)
+
+
+class TestGradesAPIRoutes:
+    def test_create_and_list_tests(self, client):
+        import database
+        cls = make_class()
+        
+        # Create test
+        r = client.post("/tests", json={"class_id": cls["id"], "name": "Prova A", "max_score": 10.0})
+        assert r.status_code == 201
+        
+        # List tests
+        r = client.get(f"/classes/{cls['id']}/tests")
+        assert r.status_code == 200
+        assert len(r.json()) == 1
+        assert r.json()[0]["name"] == "Prova A"
+
+    def test_set_student_grade_api(self, client):
+        import database
+        cls = make_class()
+        s = make_enrolled_student(cls["id"])
+        t = database.create_test(cls["id"], "Prova A", 10.0)
+        
+        # Set grade via API
+        r = client.put(f"/tests/{t['id']}/students/{s['id']}/grade", json={"score": 9.5})
+        assert r.status_code == 200
+        
+        # Get grades via API
+        r = client.get(f"/tests/{t['id']}/grades")
+        assert r.status_code == 200
+        assert r.json()[0]["score"] == 9.5
+
+    def test_set_grade_exceeds_max(self, client):
+        import database
+        cls = make_class()
+        s = make_enrolled_student(cls["id"])
+        t = database.create_test(cls["id"], "Prova A", 10.0)
+        
+        # Exceeds max
+        r = client.put(f"/tests/{t['id']}/students/{s['id']}/grade", json={"score": 10.5})
+        assert r.status_code == 400
+        assert "nota" in r.text
+
+    def test_update_test_max_score_api(self, client):
+        import database
+        cls = make_class()
+        s = make_enrolled_student(cls["id"])
+        t = database.create_test(cls["id"], "Prova A", 10.0)
+        
+        # Update max score via API
+        r = client.patch(f"/tests/{t['id']}/max-score", json={"max_score": 15.0})
+        assert r.status_code == 200
+        assert database.get_test(t['id'])["max_score"] == 15.0
+        
+        # Set grade 12.0 via API
+        r = client.put(f"/tests/{t['id']}/students/{s['id']}/grade", json={"score": 12.0})
+        assert r.status_code == 200
+        
+        # Update max score to 10.0 should fail with 400
+        r = client.patch(f"/tests/{t['id']}/max-score", json={"max_score": 10.0})
+        assert r.status_code == 400
+        assert "Existem notas" in r.text

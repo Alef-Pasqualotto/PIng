@@ -501,3 +501,225 @@ button.kbd-active {
     height: 64px;
   }
 }
+
+.mini-btn-group {
+  display: flex;
+  gap: 4px;
+}
+.mini-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--muted);
+}
+.mini-btn:hover {
+  background: #f9fafb;
+  border-color: #ccd2da;
+}
+.mini-btn.active.present {
+  background: #e7f7ef;
+  color: #18794e;
+  border-color: #9fdabd;
+  box-shadow: 0 0 0 2px rgba(36, 168, 107, 0.15);
+}
+.mini-btn.active.absent {
+  background: #fff4dc;
+  color: #8a5b12;
+  border-color: #f1dca9;
+  box-shadow: 0 0 0 2px rgba(138, 91, 18, 0.15);
+}
+.mini-btn.active.justified {
+  background: #eef1f5;
+  color: #5d6878;
+  border-color: #ccd2da;
+  box-shadow: 0 0 0 2px rgba(93, 104, 120, 0.15);
+}
+.mini-btn.active.falsified {
+  background: #fdebea;
+  color: #b42318;
+  border-color: #f1b4af;
+  box-shadow: 0 0 0 2px rgba(180, 35, 24, 0.15);
+}
+
+.mini-btn.checkout-btn {
+  background: #f4f6f8;
+  border-color: var(--line);
+  color: var(--muted);
+}
+.mini-btn.checkout-btn:hover {
+  background: #eef1f5;
+  border-color: #ccd2da;
+}
+.mini-btn.checkout-btn.active {
+  background: #17202d;
+  border-color: #17202d;
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(23, 32, 45, 0.15);
+}
+
+.stat-card {
+  background: #f8f9fa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+.stat-card h3 {
+  margin: 6px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--green-dark);
+}
+.grade-input {
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #ccd2da;
+  padding: 6px;
+  text-align: center;
+}
+.grade-input:focus {
+  outline: 2px solid var(--green);
+  border-color: var(--green);
+}
+
+.gradebook-wrapper {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel, #fff);
+}
+
+.gradebook-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.gradebook-table th, 
+.gradebook-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.gradebook-table th {
+  background: #f9fafb;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.gradebook-table .test-header {
+  min-width: 130px;
+  text-align: center;
+}
+
+.gradebook-table .test-header-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+.gradebook-table .test-name {
+  font-size: 14px;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.gradebook-table .test-max {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.gradebook-table .delete-test-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.gradebook-table .delete-test-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.gradebook-table .student-cell {
+  min-width: 200px;
+}
+
+.gradebook-table .student-cell .student-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.gradebook-table .grade-cell {
+  text-align: center;
+}
+
+.gradebook-table .grade-input {
+  width: 80px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: center;
+  font-weight: 600;
+  background: transparent;
+  color: var(--ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gradebook-table .grade-input:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px rgba(36, 168, 107, 0.15);
+}
+
+.gradebook-table .average-row {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.gradebook-table .average-row td {
+  border-bottom: none;
+  font-size: 14px;
+}
+
+.gradebook-table .average-cell {
+  text-align: center;
+  font-weight: 700;
+  color: var(--green-dark);
+}
+
+.gradebook-table .edit-max-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.gradebook-table .edit-max-btn:hover {
+  background: #eaedf0;
+  color: var(--ink);
+}

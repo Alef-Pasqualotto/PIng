@@ -2,6 +2,7 @@ import sqlite3
 import csv
 import io
 from pathlib import Path
+from datetime import datetime, timezone
 from app_paths import database_path
 
 DB_PATH = database_path()
@@ -28,22 +29,23 @@ def init_db() -> None:
                 name       TEXT NOT NULL UNIQUE,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
-
+ 
             CREATE TABLE IF NOT EXISTS sessions (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 class_id   INTEGER NOT NULL REFERENCES classes(id),
                 date       TEXT NOT NULL DEFAULT (date('now')),
                 is_open    INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                closed_at  TEXT
             );
-
+ 
             CREATE TABLE IF NOT EXISTS students (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id     TEXT NOT NULL UNIQUE,
                 name          TEXT,
                 registered_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
-
+ 
             CREATE TABLE IF NOT EXISTS enrollments (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 class_id    INTEGER NOT NULL REFERENCES classes(id),
@@ -51,17 +53,45 @@ def init_db() -> None:
                 enrolled_at TEXT NOT NULL DEFAULT (datetime('now')),
                 UNIQUE(class_id, student_id)
             );
-
+ 
             CREATE TABLE IF NOT EXISTS attendance (
                 id                    INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id            INTEGER NOT NULL REFERENCES sessions(id),
                 student_id            INTEGER NOT NULL REFERENCES students(id),
                 present               INTEGER NOT NULL DEFAULT 1,
                 checked_in_at         TEXT NOT NULL DEFAULT (datetime('now')),
+                checked_out_at        TEXT,
                 overridden_by_teacher INTEGER NOT NULL DEFAULT 0,
                 UNIQUE(session_id, student_id)
             );
+
+            CREATE TABLE IF NOT EXISTS tests (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                class_id   INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+                name       TEXT NOT NULL,
+                max_score  REAL NOT NULL DEFAULT 10.0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(class_id, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS grades (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                test_id    INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                score      REAL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(test_id, student_id)
+            );
         """)
+        # Run ALTER TABLE commands for backward compatibility
+        try:
+            conn.execute("ALTER TABLE sessions ADD COLUMN closed_at TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE attendance ADD COLUMN checked_out_at TEXT")
+        except sqlite3.OperationalError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +155,7 @@ def open_session(class_id: int) -> sqlite3.Row:
 def close_session(session_id: int) -> bool:
     with get_connection() as conn:
         cur = conn.execute(
-            "UPDATE sessions SET is_open = 0 WHERE id = ?", (session_id,)
+            "UPDATE sessions SET is_open = 0, closed_at = datetime('now') WHERE id = ?", (session_id,)
         )
         return cur.rowcount > 0
 
@@ -356,6 +386,25 @@ def get_attendance_for_session(session_id: int) -> list[sqlite3.Row]:
         ).fetchall()
 
 
+def calculate_duration(checked_in_at: str | None, checked_out_at: str | None, is_open: int, closed_at: str | None) -> int | None:
+    if not checked_in_at:
+        return None
+    try:
+        in_time = datetime.fromisoformat(checked_in_at.replace(" ", "T"))
+        if checked_out_at:
+            out_time = datetime.fromisoformat(checked_out_at.replace(" ", "T"))
+        elif is_open:
+            out_time = datetime.now(timezone.utc).replace(tzinfo=None)
+        elif closed_at:
+            out_time = datetime.fromisoformat(closed_at.replace(" ", "T"))
+        else:
+            return None
+        diff = out_time - in_time
+        return max(0, int(diff.total_seconds() // 60))
+    except Exception:
+        return None
+
+
 def get_full_session_roster(session_id: int) -> list[dict]:
     """
     Returns the complete picture for a session:
@@ -363,16 +412,18 @@ def get_full_session_roster(session_id: int) -> list[dict]:
       - Enrolled students who did NOT check in (present=0)
 
     Each entry has: attendance_id, student_id, student_name, device_id,
-                    present, checked_in_at, is_enrolled,
-                    overridden_by_teacher
+                    present, checked_in_at, checked_out_at, is_enrolled,
+                    overridden_by_teacher, duration
     """
     with get_connection() as conn:
         session = conn.execute(
-            "SELECT class_id FROM sessions WHERE id = ?", (session_id,)
+            "SELECT class_id, is_open, closed_at FROM sessions WHERE id = ?", (session_id,)
         ).fetchone()
         if not session:
             return []
         class_id = session["class_id"]
+        is_open = session["is_open"]
+        closed_at = session["closed_at"]
 
         # Enrolled students — left join catches those who never checked in
         enrolled = conn.execute(
@@ -384,6 +435,7 @@ def get_full_session_roster(session_id: int) -> list[dict]:
                 s.device_id,
                 COALESCE(a.present, 0)            AS present,
                 a.checked_in_at,
+                a.checked_out_at,
                 COALESCE(a.overridden_by_teacher, 0) AS overridden_by_teacher,
                 1                 AS is_enrolled
             FROM enrollments e
@@ -396,11 +448,16 @@ def get_full_session_roster(session_id: int) -> list[dict]:
             (session_id, class_id)
         ).fetchall()
 
-        return [dict(r) for r in enrolled]
+        result = []
+        for r in enrolled:
+            d = dict(r)
+            d["duration"] = calculate_duration(d["checked_in_at"], d["checked_out_at"], is_open, closed_at)
+            result.append(d)
+        return result
 
 
-def override_attendance(attendance_id: int, present: bool) -> bool:
-    """Teacher manually marks a student as present or absent."""
+def override_attendance(attendance_id: int, present: int) -> bool:
+    """Teacher manually marks a student's attendance status."""
     with get_connection() as conn:
         cur = conn.execute(
             """
@@ -408,12 +465,12 @@ def override_attendance(attendance_id: int, present: bool) -> bool:
             SET present = ?, overridden_by_teacher = 1
             WHERE id = ?
             """,
-            (1 if present else 0, attendance_id)
+            (present, attendance_id)
         )
         return cur.rowcount > 0
 
 
-def set_student_attendance(session_id: int, student_id: int, present: bool) -> sqlite3.Row | None:
+def set_student_attendance(session_id: int, student_id: int, present: int) -> sqlite3.Row | None:
     """Creates or updates an attendance row for an enrolled student."""
     class_row = get_class_by_session(session_id)
     if class_row is None or not is_enrolled(class_row["class_id"], student_id):
@@ -428,7 +485,7 @@ def set_student_attendance(session_id: int, student_id: int, present: bool) -> s
                 present = excluded.present,
                 overridden_by_teacher = 1
             """,
-            (session_id, student_id, 1 if present else 0),
+            (session_id, student_id, present),
         )
         return conn.execute(
             "SELECT * FROM attendance WHERE session_id = ? AND student_id = ?",
@@ -452,21 +509,159 @@ def export_session_csv(session_id: int) -> str:
         "present",
         "is_enrolled",
         "checked_in_at",
+        "checked_out_at",
+        "duration_minutes",
         "overridden_by_teacher",
         "session_date",
     ])
 
+    status_map = {
+        0: "Ausente",
+        1: "Presente",
+        2: "Ausência Justificada",
+        3: "Presença Falsificada",
+    }
+
     for r in roster:
+        present_status = status_map.get(r["present"], "Ausente")
         writer.writerow([
             r["attendance_id"] or "—",
             r["student_id"],
             r["student_name"] or "—",
             r["device_id"],
-            "yes" if r["present"] else "no",
+            present_status,
             "yes" if r["is_enrolled"] else "no",
             r["checked_in_at"] or "—",
+            r["checked_out_at"] or "—",
+            r["duration"] if r["duration"] is not None else "—",
             "yes" if r["overridden_by_teacher"] else "no",
             session["date"] if session else "—",
         ])
 
     return output.getvalue()
+
+
+def record_checkout(session_id: int, student_id: int, checkout: bool) -> bool:
+    """Sets the exit time for a student to now, or clears it."""
+    with get_connection() as conn:
+        if checkout:
+            conn.execute(
+                """
+                INSERT INTO attendance (session_id, student_id, checked_out_at, present, overridden_by_teacher)
+                VALUES (?, ?, datetime('now'), 1, 1)
+                ON CONFLICT(session_id, student_id) DO UPDATE SET
+                    checked_out_at = datetime('now')
+                """,
+                (session_id, student_id)
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE attendance
+                SET checked_out_at = NULL
+                WHERE session_id = ? AND student_id = ?
+                """,
+                (session_id, student_id)
+            )
+        return True
+
+
+# ---------------------------------------------------------------------------
+# Tests & Grades
+# ---------------------------------------------------------------------------
+
+def create_test(class_id: int, name: str, max_score: float = 10.0) -> sqlite3.Row:
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO tests (class_id, name, max_score) VALUES (?, ?, ?)",
+            (class_id, name.strip(), max_score)
+        )
+        return conn.execute(
+            "SELECT * FROM tests WHERE class_id = ? AND name = ?",
+            (class_id, name.strip())
+        ).fetchone()
+
+
+def get_tests_for_class(class_id: int) -> list[sqlite3.Row]:
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT * FROM tests WHERE class_id = ? ORDER BY name",
+            (class_id,)
+        ).fetchall()
+
+
+def get_test(test_id: int) -> sqlite3.Row | None:
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT * FROM tests WHERE id = ?", (test_id,)
+        ).fetchone()
+
+
+def delete_test(test_id: int) -> bool:
+    with get_connection() as conn:
+        cur = conn.execute("DELETE FROM tests WHERE id = ?", (test_id,))
+        return cur.rowcount > 0
+
+
+def update_test_max_score(test_id: int, new_max_score: float) -> bool:
+    with get_connection() as conn:
+        # Check if there are any grades higher than the new max_score
+        highest = conn.execute(
+            "SELECT MAX(score) as max_score FROM grades WHERE test_id = ?",
+            (test_id,)
+        ).fetchone()
+        if highest and highest["max_score"] is not None and highest["max_score"] > new_max_score:
+            raise ValueError(f"Existem notas lançadas maiores que {new_max_score}.")
+        
+        cur = conn.execute(
+            "UPDATE tests SET max_score = ? WHERE id = ?",
+            (new_max_score, test_id)
+        )
+        return cur.rowcount > 0
+
+
+def get_test_grades(test_id: int) -> list[dict]:
+    with get_connection() as conn:
+        test = conn.execute("SELECT class_id FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not test:
+            return []
+        class_id = test["class_id"]
+
+        rows = conn.execute(
+            """
+            SELECT
+                s.id AS student_id,
+                s.name AS student_name,
+                s.device_id,
+                g.id AS grade_id,
+                g.score
+            FROM enrollments e
+            JOIN students s ON s.id = e.student_id
+            LEFT JOIN grades g ON g.student_id = s.id AND g.test_id = ?
+            WHERE e.class_id = ?
+            ORDER BY s.name, s.registered_at
+            """,
+            (test_id, class_id)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def set_student_grade(test_id: int, student_id: int, score: float | None) -> bool:
+    with get_connection() as conn:
+        if score is None:
+            conn.execute(
+                "DELETE FROM grades WHERE test_id = ? AND student_id = ?",
+                (test_id, student_id)
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO grades (test_id, student_id, score, updated_at)
+                VALUES (?, ?, ?, datetime('now'))
+                ON CONFLICT(test_id, student_id) DO UPDATE SET
+                    score = excluded.score,
+                    updated_at = datetime('now')
+                """,
+                (test_id, student_id, score)
+            )
+        return True

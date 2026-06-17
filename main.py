@@ -43,7 +43,7 @@ async def local_admin_only(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
     started = time.perf_counter()
     path = request.url.path
-    is_public = True #path in PUBLIC_PATHS or path.startswith("/static/")
+    is_public = path in PUBLIC_PATHS or path.startswith("/static/")
     client_host = request.client.host if request.client else ""
     if not is_public and client_host not in LOCAL_HOSTS:
         logger.warning("request=%s denied method=%s path=%s client=%s", request_id, request.method, path, client_host)
@@ -91,9 +91,31 @@ class SessionCloseBody(BaseModel):
 
 
 class AttendanceOverrideBody(BaseModel):
-    device_id: str = Field(min_length=4, max_length=200)
+    device_id: str | None = Field(default=None, min_length=4, max_length=200)
+    class_id: int | None = None
+    present: int
+
+
+class SetAttendanceBody(BaseModel):
+    present: int
+
+
+class CheckoutBody(BaseModel):
+    checkout: bool
+
+
+class TestCreateBody(BaseModel):
     class_id: int
-    present: bool
+    name: str = Field(min_length=1, max_length=100)
+    max_score: float = Field(default=10.0, ge=0.0)
+
+
+class GradeSetBody(BaseModel):
+    score: float | None = Field(default=None, ge=0.0)
+
+
+class TestUpdateMaxScoreBody(BaseModel):
+    max_score: float = Field(ge=0.1)
 
 
 class EnrollBody(BaseModel):
@@ -154,8 +176,8 @@ def checkin(body: CheckinBody):
         "student_id": student["id"],
         "session_id": session["id"],
         "attendance_id": record["id"],
-        "is_enrolled": enrolled,\
-        "present": True,
+        "is_enrolled": enrolled,
+        "present": record["present"],
     }
 
 
@@ -217,18 +239,35 @@ def class_sessions(class_id: int):
 @app.patch("/attendance/{attendance_id}")
 def override_attendance(attendance_id: int, body: AttendanceOverrideBody):
     if attendance_id == -1:
-        checkin(body)
+        if body.device_id is None or body.class_id is None:
+            raise HTTPException(400, "device_id and class_id are required for creating new attendance.")
+        student = database.get_or_create_student(body.device_id)
+        session = database.get_active_session(body.class_id)
+        if session is None:
+            raise HTTPException(400, "A chamada não está aberta para esta turma.")
+        record = database.set_student_attendance(session["id"], student["id"], body.present)
+        if record is None:
+            raise HTTPException(404, "Sessão ou matrícula não encontrada.")
+        return {"ok": True, "attendance_id": record["id"], "present": body.present}
     elif not database.override_attendance(attendance_id, body.present):
         raise HTTPException(404, "Presença não encontrada.")
     return {"ok": True, "attendance_id": attendance_id, "present": body.present}
 
 
 @app.put("/session/{session_id}/students/{student_id}/attendance")
-def set_attendance(session_id: int, student_id: int, body: AttendanceOverrideBody):
+def set_attendance(session_id: int, student_id: int, body: SetAttendanceBody):
     record = database.set_student_attendance(session_id, student_id, body.present)
     if record is None:
         raise HTTPException(404, "Sessão ou matrícula não encontrada.")
     return {"ok": True, "attendance_id": record["id"], "present": body.present}
+
+
+@app.put("/session/{session_id}/students/{student_id}/checkout")
+def student_checkout(session_id: int, student_id: int, body: CheckoutBody):
+    if database.get_session(session_id) is None:
+        raise HTTPException(404, "Sessão não encontrada.")
+    database.record_checkout(session_id, student_id, body.checkout)
+    return {"ok": True}
 
 
 @app.get("/session/{session_id}/export")
@@ -324,3 +363,56 @@ def network_stop():
         return network_service.stop()
     except RuntimeError as exc:
         raise HTTPException(503, f"Não foi possível parar o hotspot: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Tests & Grades Routes
+# ---------------------------------------------------------------------------
+
+@app.post("/tests", status_code=201)
+def create_test(body: TestCreateBody):
+    if database.get_class(body.class_id) is None:
+        raise HTTPException(404, "Turma não encontrada.")
+    return dict(database.create_test(body.class_id, body.name, body.max_score))
+
+
+@app.get("/classes/{class_id}/tests")
+def get_class_tests(class_id: int):
+    if database.get_class(class_id) is None:
+        raise HTTPException(404, "Turma não encontrada.")
+    return [dict(t) for t in database.get_tests_for_class(class_id)]
+
+
+@app.delete("/tests/{test_id}", status_code=204)
+def delete_test(test_id: int):
+    if not database.delete_test(test_id):
+        raise HTTPException(404, "Avaliação não encontrada.")
+
+
+@app.get("/tests/{test_id}/grades")
+def get_test_grades(test_id: int):
+    if database.get_test(test_id) is None:
+        raise HTTPException(404, "Avaliação não encontrada.")
+    return database.get_test_grades(test_id)
+
+
+@app.put("/tests/{test_id}/students/{student_id}/grade")
+def set_student_grade(test_id: int, student_id: int, body: GradeSetBody):
+    test = database.get_test(test_id)
+    if test is None:
+        raise HTTPException(404, "Avaliação não encontrada.")
+    if body.score is not None and body.score > test["max_score"]:
+        raise HTTPException(400, f"A nota não pode ser maior que a nota máxima ({test['max_score']}).")
+    database.set_student_grade(test_id, student_id, body.score)
+    return {"ok": True}
+
+
+@app.patch("/tests/{test_id}/max-score")
+def update_test_max_score(test_id: int, body: TestUpdateMaxScoreBody):
+    if database.get_test(test_id) is None:
+        raise HTTPException(404, "Avaliação não encontrada.")
+    try:
+        database.update_test_max_score(test_id, body.max_score)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
