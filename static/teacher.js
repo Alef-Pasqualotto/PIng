@@ -53,8 +53,8 @@ async function loadClasses(keepSelection = true) {
     const el = $(selector);
     el.innerHTML = state.classes.length
       ? state.classes
-          .map((c) => `<option value="${c.id}">${esc(c.name)}</option>`)
-          .join("")
+        .map((c) => `<option value="${c.id}">${esc(c.name)}</option>`)
+        .join("")
       : '<option value="">Nenhuma turma</option>';
     if (state.selectedClass) el.value = state.selectedClass;
   }
@@ -98,11 +98,55 @@ async function loadRoster() {
     toast(error.message, true);
   }
 }
+function badgeHtml(present) {
+  switch (present) {
+    case 1:
+      return '<span class="badge success">Presente</span>';
+    case 2:
+      return '<span class="badge neutral">Justificada</span>';
+    case 3:
+      return '<span class="badge error">Falsificada</span>';
+    case 0:
+    default:
+      return '<span class="badge warning">Ausente</span>';
+  }
+}
+
+function formatDuration(present, minutes) {
+  if (present !== 1) return "";
+  if (minutes === null || minutes === undefined) return "";
+  if (minutes < 60) return ` (Logou a ${minutes} min)`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return ` (Logou a ${hours}h ${mins.toString().padStart(2, '0')}m)`;
+}
+
+function rowActionsHtml(r, context) {
+  const isHistory = context === "history";
+  const attrName = isHistory ? "data-history-attendance" : "data-attendance-student";
+  const valAttr = isHistory ? r.attendance_id : r.student_id;
+  const checkoutButton = (r.present === 1) ? (
+    r.checked_out_at ?
+      `<button title="Limpar Saída" class="mini-btn checkout-btn active" data-student-id="${r.student_id}" data-checkout="false">Retornar</button>` :
+      `<button title="Registrar Saída" class="mini-btn checkout-btn" data-student-id="${r.student_id}" data-checkout="true">Saída</button>`
+  ) : "";
+  return `
+    <div class="mini-btn-group">
+      <button title="Presente" class="mini-btn present ${r.present === 1 ? 'active' : ''}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" ${attrName}="${valAttr}" data-status="1">P</button>
+      <button title="Ausente" class="mini-btn absent ${r.present === 0 ? 'active' : ''}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" ${attrName}="${valAttr}" data-status="0">A</button>
+      <button title="Ausência Justificada" class="mini-btn justified ${r.present === 2 ? 'active' : ''}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" ${attrName}="${valAttr}" data-status="2">J</button>
+      <button title="Presença Falsificada" class="mini-btn falsified ${r.present === 3 ? 'active' : ''}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" ${attrName}="${valAttr}" data-status="3">F</button>
+      ${checkoutButton}
+    </div>
+  `;
+}
 
 function renderRoster(rows) {
   state._rosterRows = rows;
-  $("#present-count").textContent = rows.filter((r) => r.present).length;
-  $("#absent-count").textContent = rows.filter((r) => !r.present).length;
+  $("#present-count").textContent = rows.filter((r) => r.present === 1).length;
+  $("#absent-count").textContent = rows.filter((r) => r.present === 0).length;
+  $("#justified-count").textContent = rows.filter((r) => r.present === 2).length;
+  $("#falsified-count").textContent = rows.filter((r) => r.present === 3).length;
   $("#roster-empty").style.display = rows.length ? "none" : "block";
   $("#roster-empty").textContent = state.activeSession
     ? "Nenhum estudante matriculado nesta turma."
@@ -111,7 +155,7 @@ function renderRoster(rows) {
   $("#roster-list").innerHTML = rows
     .map(
       (r) =>
-        `<div class="table-row roster-row" data-attendance-id="${r.attendance_id}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-student-id="${r.student_id}"><div><div class="student-name">${esc(r.student_name || "Nome não informado")}</div><div class="small">${esc(r.device_id)}</div></div><span class="badge ${r.present ? "success" : "warning"}">${r.present ? "Presente" : "Ausente"}</span><div class="row-actions"><button class="mini present" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-attendance-student="${r.student_id}" data-present="true">Presente</button><button class="mini absent" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-attendance-student="${r.student_id}" data-present="false">Ausente</button></div></div>`,
+        `<div class="table-row roster-row" data-attendance-id="${r.attendance_id}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-student-id="${r.student_id}"><div><div class="student-name">${esc(r.student_name || "Nome não informado")}${formatDuration(r.present, r.duration)}</div><div class="small">${esc(r.device_id)}</div></div>${badgeHtml(r.present)}${rowActionsHtml(r, "roster")}</div>`,
     )
     .join("");
   if (state.kbd.active && state.kbd.context === "roster")
@@ -168,13 +212,13 @@ function renderStudents() {
 
   $("#students-list").innerHTML = students.length
     ? students
-        .map((s) => {
-          const classesHtml = s.enrollments.length
-            ? s.enrollments
-                .map((n) => `<span class="badge neutral">${esc(n)}</span>`)
-                .join(" ")
-            : '<span class="muted">Nenhuma turma</span>';
-          return `
+      .map((s) => {
+        const classesHtml = s.enrollments.length
+          ? s.enrollments
+            .map((n) => `<span class="badge neutral">${esc(n)}</span>`)
+            .join(" ")
+          : '<span class="muted">Nenhuma turma</span>';
+        return `
       <div class="table-row student-row" data-student-id="${s.id}">
         <div>
           <div class="student-name">${esc(s.name || "Nome não informado")}</div>
@@ -190,8 +234,8 @@ function renderStudents() {
         <p class="eyebrow" style="margin:0 0 8px">TURMAS MATRICULADO</p>
         <div class="expand-classes">${classesHtml}</div>
       </div>`;
-        })
-        .join("")
+      })
+      .join("")
     : '<div class="empty">Nenhum estudante encontrado.</div>';
 }
 
@@ -205,11 +249,11 @@ async function loadHistory() {
   const sessions = await api(`/classes/${classId}/sessions`);
   $("#history-list").innerHTML = sessions.length
     ? sessions
-        .map(
-          (s) =>
-            `<div class="table-row"><div><div class="student-name">Chamada de ${esc(s.date)}</div><div class="small">Sessão #${s.id}</div></div><span class="badge ${s.is_open ? "success" : "neutral"}">${s.is_open ? "Aberta" : "Encerrada"}</span><div class="row-actions"><button class="mini" data-review-session="${s.id}" data-review-date="${esc(s.date)}">Ver lista</button><button class="mini" data-export-session="${s.id}">Exportar CSV</button></div></div>`,
-        )
-        .join("")
+      .map(
+        (s) =>
+          `<div class="table-row"><div><div class="student-name">Chamada de ${esc(s.date)}</div><div class="small">Sessão #${s.id}</div></div><span class="badge ${s.is_open ? "success" : "neutral"}">${s.is_open ? "Aberta" : "Encerrada"}</span><div class="row-actions"><button class="mini" data-review-session="${s.id}" data-review-date="${esc(s.date)}">Ver lista</button><button class="mini" data-export-session="${s.id}">Exportar CSV</button></div></div>`,
+      )
+      .join("")
     : '<div class="empty">Nenhuma chamada registrada para esta turma.</div>';
 }
 
@@ -220,19 +264,17 @@ async function reviewSession(id, date) {
   const card = $("#history-roster-card");
   card.hidden = false;
   $("#history-roster-title").textContent = `Chamada de ${date}`;
-  $("#history-present-count").textContent = rows.filter(
-    (r) => r.present,
-  ).length;
-  $("#history-absent-count").textContent = rows.filter(
-    (r) => !r.present,
-  ).length;
+  $("#history-present-count").textContent = rows.filter((r) => r.present === 1).length;
+  $("#history-absent-count").textContent = rows.filter((r) => r.present === 0).length;
+  $("#history-justified-count").textContent = rows.filter((r) => r.present === 2).length;
+  $("#history-falsified-count").textContent = rows.filter((r) => r.present === 3).length;
   $("#history-roster-list").innerHTML = rows.length
     ? rows
-        .map(
-          (r) =>
-            `<div class="table-row roster-row" data-attendance-id="${r.attendance_id}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-student-id="${r.student_id}"><div><div class="student-name">${esc(r.student_name || "Nome não informado")}</div><div class="small">${esc(r.device_id)}</div></div><span class="badge ${r.present ? "success" : "warning"}">${r.present ? "Presente" : "Ausente"}</span><div class="row-actions"><button data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" class="mini present" data-history-attendance="${r.attendance_id}" data-present="true">Presente</button><button data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" class="mini absent" data-history-attendance="${r.attendance_id}" data-present="false">Ausente</button></div></div>`,
-        )
-        .join("")
+      .map(
+        (r) =>
+          `<div class="table-row roster-row" data-attendance-id="${r.attendance_id}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-student-id="${r.student_id}"><div><div class="student-name">${esc(r.student_name || "Nome não informado")}${formatDuration(r.present, r.duration)}</div><div class="small">${esc(r.device_id)}</div></div>${badgeHtml(r.present)}${rowActionsHtml(r, "history")}</div>`,
+      )
+      .join("")
     : '<div class="empty">Nenhum estudante nesta chamada.</div>';
   card.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -266,7 +308,7 @@ function enterKeyboardMode(context) {
   $(hint).hidden = false;
   highlightKbdRow(context);
   toast(
-    "Chamada rápida ativa. Enter = presente, Backspace = ausente, Tab = pular.",
+    "Chamada rápida ativa.",
   );
 }
 
@@ -286,23 +328,42 @@ function exitKeyboardMode() {
 async function kbdSetAttendance(context, present) {
   const rows = kbdRows(context);
   const row = rows[state.kbd.index];
-  device_id = row.getAttribute("data-device-id");
-  class_id = row.getAttribute("data-class-id");
+  const device_id = row.getAttribute("data-device-id");
+  const class_id = Number(row.getAttribute("data-class-id"));
   if (!row) return;
-  if (row.dataset.attendanceId != "null") {
+  let attendanceId;
+  if (row.dataset.attendanceId != "null" && row.dataset.attendanceId != "undefined" && row.dataset.attendanceId != "") {
     attendanceId = row.dataset.attendanceId;
   } else {
     attendanceId = -1;
   }
   try {
-    await api(`/attendance/${attendanceId}`, {
+    const data = await api(`/attendance/${attendanceId}`, {
       method: "PATCH",
       body: JSON.stringify({ device_id, class_id, present }),
     });
-    // Update badge inline without a full reload
+
+    // Update attendance ID if we got a new one back from -1
+    if (attendanceId == -1 && data.attendance_id) {
+      row.dataset.attendanceId = data.attendance_id;
+    }
+
+    // Update badge and active class inline without a full reload
     const badge = row.querySelector(".badge");
-    badge.className = `badge ${present ? "success" : "warning"}`;
-    badge.textContent = present ? "Presente" : "Ausente";
+    if (present === 1) {
+      badge.className = "badge success"; badge.textContent = "Presente";
+    } else if (present === 2) {
+      badge.className = "badge neutral"; badge.textContent = "Justificada";
+    } else if (present === 3) {
+      badge.className = "badge error"; badge.textContent = "Falsificada";
+    } else {
+      badge.className = "badge warning"; badge.textContent = "Ausente";
+    }
+
+    row.querySelectorAll(".mini-btn").forEach(btn => {
+      btn.classList.toggle("active", Number(btn.dataset.status) === present);
+    });
+
     // Advance to next
     kbdAdvance(context);
   } catch (e) {
@@ -323,10 +384,17 @@ function kbdAdvance(context) {
 
 document.addEventListener("keydown", async (e) => {
   if (!state.kbd.active) return;
-  if (["Enter", "Backspace", "Tab"].includes(e.key)) e.preventDefault();
-  if (e.key === "Enter") await kbdSetAttendance(state.kbd.context, true);
-  if (e.key === "Backspace") await kbdSetAttendance(state.kbd.context, false);
-  if (e.key === "Tab") kbdAdvance(state.kbd.context);
+  const key = e.key.toLowerCase();
+  if (["1", "2", "3", "4", "tab", "p", "a", "j", "f"].includes(key)) {
+    e.preventDefault();
+  } else {
+    return;
+  }
+  if (key === "1" || key === "p") await kbdSetAttendance(state.kbd.context, 1);
+  else if (key === "2" || key === "a") await kbdSetAttendance(state.kbd.context, 0);
+  else if (key === "3" || key === "j") await kbdSetAttendance(state.kbd.context, 2);
+  else if (key === "4" || key === "f") await kbdSetAttendance(state.kbd.context, 3);
+  else if (key === "tab") kbdAdvance(state.kbd.context);
 });
 
 async function exportSession(id) {
@@ -414,14 +482,16 @@ document.addEventListener("click", async (event) => {
   const nav = event.target.closest("[data-view]");
   if (nav) return showView(nav.dataset.view);
   const attendance = event.target.closest("[data-attendance-student]");
-  
-  if(attendance)
+
+  if (attendance)
+
     return setAttendance(
       Number(attendance.dataset.attendanceStudent),
       attendance.getAttribute("data-device-id"),
       attendance.getAttribute("data-class-id"),
-      attendance.dataset.present === "true",
+      attendance.getAttribute("data-status"),
     ).catch((e) => toast(e.message, true));
+
   const edit = event.target.closest("[data-edit-student]");
   if (edit) {
     const name = await promptModal(
@@ -485,11 +555,11 @@ document.addEventListener("click", async (event) => {
   const histAtt = event.target.closest("[data-history-attendance]");
   if (histAtt) {
     device_id = histAtt.getAttribute("data-device-id"),
-    class_id = histAtt.getAttribute("data-class-id"),
-    await api(`/attendance/${histAtt.dataset.historyAttendance}`, {
-      method: "PATCH",
-      body: JSON.stringify({ device_id: device_id, class_id: class_id, present: histAtt.dataset.present === "true" }),
-    });
+      class_id = histAtt.getAttribute("data-class-id"),
+      await api(`/attendance/${histAtt.dataset.historyAttendance}`, {
+        method: "PATCH",
+        body: JSON.stringify({ device_id: device_id, class_id: class_id, present: histAtt.dataset.present === "true" }),
+      });
     await reviewSession(
       state._historySessionId,
       $("#history-roster-title").textContent.replace("Chamada de ", ""),
@@ -711,19 +781,19 @@ async function loadGrades() {
     $("#gradebook-container").innerHTML = '<div class="empty">Selecione uma turma para ver as avaliações.</div>';
     return;
   }
-  
+
   const [students, tests] = await Promise.all([
     api(`/classes/${classId}/students`),
     api(`/classes/${classId}/tests`)
   ]);
-  
+
   const allGrades = await Promise.all(tests.map(t => api(`/tests/${t.id}/grades`)));
-  
+
   const gradesMap = {};
   students.forEach(s => {
     gradesMap[s.id] = {};
   });
-  
+
   tests.forEach((t, idx) => {
     const testGrades = allGrades[idx];
     testGrades.forEach(g => {
@@ -732,12 +802,12 @@ async function loadGrades() {
       }
     });
   });
-  
+
   if (students.length === 0) {
     $("#gradebook-container").innerHTML = '<div class="empty">Nenhum estudante matriculado nesta turma.</div>';
     return;
   }
-  
+
   $("#gradebook-container").innerHTML = `
     <div class="gradebook-wrapper">
       <table class="gradebook-table">
@@ -760,17 +830,17 @@ async function loadGrades() {
         </thead>
         <tbody>
           ${students.map(s => {
-            const studentSum = tests.reduce((sum, t) => sum + (gradesMap[s.id][t.id] || 0), 0);
-            return `
+    const studentSum = tests.reduce((sum, t) => sum + (gradesMap[s.id][t.id] || 0), 0);
+    return `
               <tr>
                 <td class="student-cell">
                   <div class="student-name">${esc(s.name || "Nome não informado")}</div>
                   <div class="small">${esc(s.device_id)}</div>
                 </td>
                 ${tests.map(t => {
-                  const score = gradesMap[s.id][t.id];
-                  const scoreVal = (score !== null && score !== undefined) ? score : "";
-                  return `
+      const score = gradesMap[s.id][t.id];
+      const scoreVal = (score !== null && score !== undefined) ? score : "";
+      return `
                     <td class="grade-cell">
                       <input type="number" step="0.1" min="0" max="${t.max_score}" 
                              class="grade-input" 
@@ -781,7 +851,7 @@ async function loadGrades() {
                              placeholder="—">
                     </td>
                   `;
-                }).join("")}
+    }).join("")}
                 ${tests.length > 0 ? `
                   <td class="total-cell" data-student-id="${s.id}" style="font-weight: 700; text-align: center; color: var(--ink);">
                     ${studentSum.toFixed(1)}
@@ -789,22 +859,22 @@ async function loadGrades() {
                 ` : ""}
               </tr>
             `;
-          }).join("")}
+  }).join("")}
         </tbody>
         ${tests.length > 0 ? `
           <tfoot>
             <tr class="average-row">
               <td>Média da Turma</td>
               ${tests.map((t, idx) => {
-                const testGrades = allGrades[idx];
-                const scores = testGrades.map(g => g.score).filter(sc => sc !== null && sc !== undefined);
-                let avgStr = "—";
-                if (scores.length > 0) {
-                  const sum = scores.reduce((a, b) => a + b, 0);
-                  avgStr = (sum / scores.length).toFixed(1);
-                }
-                return `<td class="average-cell" data-average-test-id="${t.id}">${avgStr}</td>`;
-              }).join("")}
+    const testGrades = allGrades[idx];
+    const scores = testGrades.map(g => g.score).filter(sc => sc !== null && sc !== undefined);
+    let avgStr = "—";
+    if (scores.length > 0) {
+      const sum = scores.reduce((a, b) => a + b, 0);
+      avgStr = (sum / scores.length).toFixed(1);
+    }
+    return `<td class="average-cell" data-average-test-id="${t.id}">${avgStr}</td>`;
+  }).join("")}
               <td class="total-cell" style="font-weight: 700; text-align: center; color: var(--muted); font-size: 13px;">
                 Máx: ${tests.reduce((acc, curr) => acc + curr.max_score, 0).toFixed(1)}
               </td>
@@ -818,7 +888,7 @@ async function loadGrades() {
 
 async function updateGrade(studentId, testId, scoreVal, maxScore) {
   const score = scoreVal === "" ? null : Number(scoreVal);
-  
+
   if (score !== null) {
     if (isNaN(score) || score < 0) {
       toast("Nota inválida.", true);
@@ -829,12 +899,12 @@ async function updateGrade(studentId, testId, scoreVal, maxScore) {
       return;
     }
   }
-  
+
   await api(`/tests/${testId}/students/${studentId}/grade`, {
     method: "PUT",
     body: JSON.stringify({ score })
   });
-  
+
   // Recalculate average for this specific test column
   const inputs = Array.from(document.querySelectorAll(`.grade-input[data-test-id="${testId}"]`));
   const scores = inputs.map(input => input.value === "" ? null : Number(input.value)).filter(s => s !== null);
