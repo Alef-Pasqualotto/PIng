@@ -21,7 +21,7 @@ logger = get_logger("api")
 
 
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
-PUBLIC_PATHS = {"/", "/public/classes", "/checkin", "/session/status", "/health"}
+PUBLIC_PATHS = {"/", "/public/classes", "/checkin", "/session/status", "/health", "/public/students/attendance"}
 
 
 @asynccontextmanager
@@ -127,6 +127,10 @@ class StudentNameBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
+class MergeStudentBody(BaseModel):
+    source_id: int
+
+
 class NetworkConfigBody(BaseModel):
     ssid: str = Field(min_length=1, max_length=32)
     password: str = Field(min_length=8, max_length=63)
@@ -185,6 +189,20 @@ def checkin(body: CheckinBody):
 def session_status(class_id: int):
     session = database.get_active_session(class_id)
     return {"is_open": session is not None, "session_id": session["id"] if session else None}
+
+
+@app.get("/public/students/attendance")
+def student_attendance_history(device_id: str, class_id: int):
+    student = database.get_student_by_device(device_id)
+    if student is None:
+        raise HTTPException(404, "Estudante não encontrado para este dispositivo.")
+    if not database.is_enrolled(class_id, student["id"]):
+        raise HTTPException(400, "Você não está matriculado nesta turma.")
+    history = database.get_student_attendance_history(class_id, student["id"])
+    return {
+        "student_name": student["name"] or "Nome não informado",
+        "history": [dict(row) for row in history]
+    }
 
 
 @app.get("/teacher", response_class=HTMLResponse)
@@ -326,6 +344,21 @@ async def update_device(student_id: int, request: Request):
     if not database.update_student_device(student_id, device_id):
         raise HTTPException(404, "Estudante não encontrado.")
     return {"ok": True, "student_id": student_id, "device_id": device_id}
+
+
+@app.post("/students/{target_id}/merge")
+def merge_students(target_id: int, body: MergeStudentBody):
+    if target_id == body.source_id:
+        raise HTTPException(400, "O estudante de destino e de origem não podem ser o mesmo.")
+    target = database.get_student(target_id)
+    source = database.get_student(body.source_id)
+    if target is None:
+        raise HTTPException(404, "Estudante de destino não encontrado.")
+    if source is None:
+        raise HTTPException(404, "Estudante de origem não encontrado.")
+    if not database.merge_students(target_id, body.source_id):
+        raise HTTPException(500, "Erro ao mesclar estudantes.")
+    return {"ok": True}
 
 
 @app.get("/api/network/status")

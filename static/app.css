@@ -409,6 +409,14 @@ button.kbd-active {
   color: #18794e;
   border: 1px solid #9fdabd;
 }
+.table-row.checked-out {
+  background-color: rgba(240, 97, 36, 0.05);
+  border-left: 4px solid #f06124;
+  padding-left: 8px;
+}
+.table-row.checked-out .student-name {
+  color: #b93815;
+}
 .student-page {
   background: linear-gradient(145deg, #101a2b, #182a43);
   min-height: 100vh;

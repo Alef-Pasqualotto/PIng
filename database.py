@@ -405,6 +405,39 @@ def calculate_duration(checked_in_at: str | None, checked_out_at: str | None, is
         return None
 
 
+def calculate_percentage(checked_in_at: str | None, checked_out_at: str | None, is_open: int, closed_at: str | None, session_created_at: str) -> int | None:
+    if not checked_in_at:
+        return None
+    try:
+        in_time = datetime.fromisoformat(checked_in_at.replace(" ", "T"))
+        if checked_out_at:
+            out_time = datetime.fromisoformat(checked_out_at.replace(" ", "T"))
+        elif is_open:
+            out_time = datetime.now(timezone.utc).replace(tzinfo=None)
+        elif closed_at:
+            out_time = datetime.fromisoformat(closed_at.replace(" ", "T"))
+        else:
+            return None
+        student_seconds = max(0.0, (out_time - in_time).total_seconds())
+
+        session_start = datetime.fromisoformat(session_created_at.replace(" ", "T"))
+        if is_open:
+            session_end = datetime.now(timezone.utc).replace(tzinfo=None)
+        elif closed_at:
+            session_end = datetime.fromisoformat(closed_at.replace(" ", "T"))
+        else:
+            return None
+        session_seconds = (session_end - session_start).total_seconds()
+
+        if session_seconds <= 0.0:
+            return 100
+
+        percent = (student_seconds / session_seconds) * 100.0
+        return min(100, max(0, int(round(percent))))
+    except Exception:
+        return None
+
+
 def get_full_session_roster(session_id: int) -> list[dict]:
     """
     Returns the complete picture for a session:
@@ -413,16 +446,17 @@ def get_full_session_roster(session_id: int) -> list[dict]:
 
     Each entry has: attendance_id, student_id, student_name, device_id,
                     present, checked_in_at, checked_out_at, is_enrolled,
-                    overridden_by_teacher, duration
+                    overridden_by_teacher, duration, duration_percentage
     """
     with get_connection() as conn:
         session = conn.execute(
-            "SELECT class_id, is_open, closed_at FROM sessions WHERE id = ?", (session_id,)
+            "SELECT class_id, is_open, created_at, closed_at FROM sessions WHERE id = ?", (session_id,)
         ).fetchone()
         if not session:
             return []
         class_id = session["class_id"]
         is_open = session["is_open"]
+        created_at = session["created_at"]
         closed_at = session["closed_at"]
 
         # Enrolled students — left join catches those who never checked in
@@ -452,6 +486,7 @@ def get_full_session_roster(session_id: int) -> list[dict]:
         for r in enrolled:
             d = dict(r)
             d["duration"] = calculate_duration(d["checked_in_at"], d["checked_out_at"], is_open, closed_at)
+            d["duration_percentage"] = calculate_percentage(d["checked_in_at"], d["checked_out_at"], is_open, closed_at, created_at)
             result.append(d)
         return result
 
@@ -566,6 +601,43 @@ def record_checkout(session_id: int, student_id: int, checkout: bool) -> bool:
         return True
 
 
+def get_student_attendance_history(class_id: int, student_id: int) -> list[dict]:
+    """Returns all session dates and presence status for a student in a class, ordered by date."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT 
+                s.id AS session_id,
+                s.date,
+                s.is_open,
+                s.created_at,
+                s.closed_at,
+                a.present,
+                a.checked_in_at,
+                a.checked_out_at
+            FROM sessions s
+            LEFT JOIN attendance a ON a.session_id = s.id AND a.student_id = ?
+            WHERE s.class_id = ?
+            ORDER BY s.date DESC, s.id DESC
+            """,
+            (student_id, class_id)
+        ).fetchall()
+        
+        result = []
+        for r in rows:
+            d = dict(r)
+            present = d["present"] if d["present"] is not None else 0
+            d["present"] = present
+            if present == 1:
+                d["duration_percentage"] = calculate_percentage(
+                    d["checked_in_at"], d["checked_out_at"], d["is_open"], d["closed_at"], d["created_at"]
+                )
+            else:
+                d["duration_percentage"] = None
+            result.append(d)
+        return result
+
+
 # ---------------------------------------------------------------------------
 # Tests & Grades
 # ---------------------------------------------------------------------------
@@ -664,4 +736,84 @@ def set_student_grade(test_id: int, student_id: int, score: float | None) -> boo
                 """,
                 (test_id, student_id, score)
             )
+        return True
+
+
+def merge_students(target_id: int, source_id: int) -> bool:
+    if target_id == source_id:
+        return False
+    with get_connection() as conn:
+        # Check that both target and source exist
+        target = conn.execute("SELECT id FROM students WHERE id = ?", (target_id,)).fetchone()
+        source = conn.execute("SELECT id, device_id FROM students WHERE id = ?", (source_id,)).fetchone()
+        if not target or not source:
+            return False
+            
+        source_device_id = source["device_id"]
+        
+        # 1. Consolidate enrollments: Insert or ignore enrollments for target_id using classes source_id is enrolled in
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO enrollments (class_id, student_id)
+            SELECT class_id, ? FROM enrollments WHERE student_id = ?
+            """,
+            (target_id, source_id)
+        )
+        conn.execute("DELETE FROM enrollments WHERE student_id = ?", (source_id,))
+        
+        # 2. Consolidate attendance logs
+        source_atts = conn.execute("SELECT * FROM attendance WHERE student_id = ?", (source_id,)).fetchall()
+        for sa in source_atts:
+            # Check if target already has an attendance record for this session
+            ta = conn.execute(
+                "SELECT * FROM attendance WHERE session_id = ? AND student_id = ?",
+                (sa["session_id"], target_id)
+            ).fetchone()
+            if ta:
+                # If target was absent (present = 0) and source was present (1, 2, 3), upgrade target's record
+                if ta["present"] == 0 and sa["present"] != 0:
+                    conn.execute(
+                        """
+                        UPDATE attendance
+                        SET present = ?, checked_in_at = ?, checked_out_at = ?, overridden_by_teacher = ?
+                        WHERE id = ?
+                        """,
+                        (sa["present"], sa["checked_in_at"], sa["checked_out_at"], sa["overridden_by_teacher"], ta["id"])
+                    )
+            else:
+                # Target has no attendance record, move source's record to target
+                conn.execute("UPDATE attendance SET student_id = ? WHERE id = ?", (target_id, sa["id"]))
+        conn.execute("DELETE FROM attendance WHERE student_id = ?", (source_id,))
+        
+        # 3. Consolidate grades
+        source_grades = conn.execute("SELECT * FROM grades WHERE student_id = ?", (source_id,)).fetchall()
+        for sg in source_grades:
+            tg = conn.execute(
+                "SELECT * FROM grades WHERE test_id = ? AND student_id = ?",
+                (sg["test_id"], target_id)
+            ).fetchone()
+            if tg:
+                # If both have grades, resolve to the higher score
+                new_score = None
+                if tg["score"] is not None and sg["score"] is not None:
+                    new_score = max(tg["score"], sg["score"])
+                elif tg["score"] is not None:
+                    new_score = tg["score"]
+                else:
+                    new_score = sg["score"]
+                conn.execute(
+                    "UPDATE grades SET score = ?, updated_at = datetime('now') WHERE id = ?",
+                    (new_score, tg["id"])
+                )
+            else:
+                # Move grade
+                conn.execute("UPDATE grades SET student_id = ? WHERE id = ?", (target_id, sg["id"]))
+        conn.execute("DELETE FROM grades WHERE student_id = ?", (source_id,))
+        
+        # 4. Delete the source student record (releasing the unique constraint on device_id)
+        conn.execute("DELETE FROM students WHERE id = ?", (source_id,))
+        
+        # 5. Assign the source student's device_id to the target student
+        conn.execute("UPDATE students SET device_id = ? WHERE id = ?", (source_device_id, target_id))
+        
         return True

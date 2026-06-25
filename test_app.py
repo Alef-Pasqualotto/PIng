@@ -829,3 +829,171 @@ class TestGradesAPIRoutes:
         r = client.patch(f"/tests/{t['id']}/max-score", json={"max_score": 10.0})
         assert r.status_code == 400
         assert "Existem notas" in r.text
+
+
+class TestStudentMerge:
+    def test_database_merge_students_logic(self):
+        import database
+        # 1. Create classes
+        c1 = database.create_class("Math")
+        c2 = database.create_class("Science")
+
+        # 2. Create students
+        target = database.get_or_create_student("device-target")
+        database.update_student_name(target["id"], "Target Student")
+        source = database.get_or_create_student("device-source")
+        database.update_student_name(source["id"], "Source Student")
+
+        # Enroll target in Math, source in Science (and both in Math so there's duplicate enrollment to test consolidation)
+        database.enroll_student(c1["id"], target["id"])
+        database.enroll_student(c1["id"], source["id"])
+        database.enroll_student(c2["id"], source["id"])
+
+        # 3. Create tests & grades
+        t1 = database.create_test(c1["id"], "Test Math", 10.0)
+        t2 = database.create_test(c2["id"], "Test Science", 10.0)
+
+        # Target gets 7.0 on Test Math, Source gets 9.0
+        database.set_student_grade(t1["id"], target["id"], 7.0)
+        database.set_student_grade(t1["id"], source["id"], 9.0)
+        # Source gets 8.0 on Test Science, Target has no grade
+        database.set_student_grade(t2["id"], source["id"], 8.0)
+
+        # 4. Create sessions & attendance
+        s1 = database.open_session(c1["id"])
+        # For session 1, target checks in, then is overridden by teacher to 0 (absent)
+        target_att = database.record_checkin(s1["id"], target["id"])
+        database.override_attendance(target_att["id"], 0)
+        # Source checks in (present = 1)
+        database.record_checkin(s1["id"], source["id"])
+
+        # For session 2 (Science), only source checks in and gets overridden to 2 (justified)
+        s2 = database.open_session(c2["id"])
+        source_att2 = database.record_checkin(s2["id"], source["id"])
+        database.override_attendance(source_att2["id"], 2)
+
+        # Execute merge
+        ok = database.merge_students(target["id"], source["id"])
+        assert ok is True
+
+        # Check source student is deleted
+        assert database.get_student(source["id"]) is None
+
+        # Check target student got the device_id from source
+        updated_target = database.get_student(target["id"])
+        assert updated_target["device_id"] == "device-source"
+
+        # Check target enrollments consolidated
+        classes = [c["id"] for c in database.get_classes_for_student(target["id"])]
+        assert c1["id"] in classes
+        assert c2["id"] in classes
+
+        # Check grades resolved
+        # Test 1 grade should be max(7.0, 9.0) = 9.0
+        grades1 = database.get_test_grades(t1["id"])
+        target_grade1 = next(g for g in grades1 if g["student_id"] == target["id"])
+        assert target_grade1["score"] == 9.0
+
+        # Test 2 grade should be 8.0
+        grades2 = database.get_test_grades(t2["id"])
+        target_grade2 = next(g for g in grades2 if g["student_id"] == target["id"])
+        assert target_grade2["score"] == 8.0
+
+        # Check attendance resolved
+        # Session 1: Target had 0, Source had 1 -> Target should be upgraded to 1
+        roster1 = database.get_full_session_roster(s1["id"])
+        target_roster1 = next(r for r in roster1 if r["student_id"] == target["id"])
+        assert target_roster1["present"] == 1
+
+        # Session 2: Target had nothing, Source had 2 -> Target should have 2
+        roster2 = database.get_full_session_roster(s2["id"])
+        target_roster2 = next(r for r in roster2 if r["student_id"] == target["id"])
+        assert target_roster2["present"] == 2
+
+    def test_merge_api_endpoint(self, client):
+        import database
+        target = database.get_or_create_student("device-target")
+        source = database.get_or_create_student("device-source")
+
+        # Success path
+        r = client.post(f"/students/{target['id']}/merge", json={"source_id": source["id"]})
+        assert r.status_code == 200
+        assert r.json() == {"ok": True}
+
+        # Nonexistent target
+        r = client.post("/students/9999/merge", json={"source_id": source["id"]})
+        assert r.status_code == 404
+
+        # Nonexistent source
+        r = client.post(f"/students/{target['id']}/merge", json={"source_id": 9999})
+        assert r.status_code == 404
+
+        # Same student
+        r = client.post(f"/students/{target['id']}/merge", json={"source_id": target["id"]})
+        assert r.status_code == 400
+
+
+class TestStudentAbsences:
+    def test_database_get_student_attendance_history(self):
+        import database
+        cls = make_class()
+        s = make_enrolled_student(cls["id"])
+        
+        # Open 2 sessions
+        s1 = database.open_session(cls["id"])
+        s2 = database.open_session(cls["id"])
+        
+        # Student present in session 1
+        database.record_checkin(s1["id"], s["id"])
+        
+        # Student absent in session 2 (no record)
+        
+        history = database.get_student_attendance_history(cls["id"], s["id"])
+        assert len(history) == 2
+        
+        # Order is descending by session id
+        assert history[0]["session_id"] == s2["id"]
+        assert history[0]["present"] == 0
+        
+        assert history[1]["session_id"] == s1["id"]
+        assert history[1]["present"] == 1
+
+    def test_database_get_student_attendance_history_percentage(self):
+        import database
+        cls = make_class()
+        s = make_enrolled_student(cls["id"])
+        
+        s1 = database.open_session(cls["id"])
+        database.record_checkin(s1["id"], s["id"])
+        database.close_session(s1["id"])
+        
+        history = database.get_student_attendance_history(cls["id"], s["id"])
+        assert len(history) == 1
+        # Checked in at start and stayed until close, so should be 100%
+        assert history[0]["duration_percentage"] == 100
+
+    def test_api_student_attendance_history(self, client):
+        import database
+        cls = make_class()
+        s = make_enrolled_student(cls["id"], "device-absences")
+        database.update_student_name(s["id"], "Test Absences")
+        
+        s1 = database.open_session(cls["id"])
+        database.record_checkin(s1["id"], s["id"])
+        
+        # Nonexistent student device_id
+        r = client.get(f"/public/students/attendance?device_id=ghost-device&class_id={cls['id']}")
+        assert r.status_code == 404
+        
+        # Student is not enrolled in a different class
+        cls2 = make_class("Other Class")
+        r = client.get(f"/public/students/attendance?device_id=device-absences&class_id={cls2['id']}")
+        assert r.status_code == 400
+        
+        # Success path
+        r = client.get(f"/public/students/attendance?device_id=device-absences&class_id={cls['id']}")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["student_name"] == "Test Absences"
+        assert len(data["history"]) == 1
+        assert data["history"][0]["present"] == 1

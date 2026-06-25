@@ -112,13 +112,10 @@ function badgeHtml(present) {
   }
 }
 
-function formatDuration(present, minutes) {
+function formatDuration(present, percentage) {
   if (present !== 1) return "";
-  if (minutes === null || minutes === undefined) return "";
-  if (minutes < 60) return ` (Logou a ${minutes} min)`;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return ` (Logou a ${hours}h ${mins.toString().padStart(2, '0')}m)`;
+  if (percentage === null || percentage === undefined) return "";
+  return ` (${percentage}% da aula)`;
 }
 
 function rowActionsHtml(r, context) {
@@ -127,8 +124,8 @@ function rowActionsHtml(r, context) {
   const valAttr = isHistory ? r.attendance_id : r.student_id;
   const checkoutButton = (r.present === 1) ? (
     r.checked_out_at ?
-      `<button title="Limpar Saída" class="mini-btn checkout-btn active" data-student-id="${r.student_id}" data-checkout="false">Retornar</button>` :
-      `<button title="Registrar Saída" class="mini-btn checkout-btn" data-student-id="${r.student_id}" data-checkout="true">Saída</button>`
+      `<button title="Limpar Saída" class="mini-btn checkout-btn active" data-student-id="${r.student_id}" data-checkout="false" data-context="${context}">Retornar</button>` :
+      `<button title="Registrar Saída" class="mini-btn checkout-btn" data-student-id="${r.student_id}" data-checkout="true" data-context="${context}">Saída</button>`
   ) : "";
   return `
     <div class="mini-btn-group">
@@ -154,8 +151,10 @@ function renderRoster(rows) {
   $("#kbd-mode-roster").disabled = !rows.length;
   $("#roster-list").innerHTML = rows
     .map(
-      (r) =>
-        `<div class="table-row roster-row" data-attendance-id="${r.attendance_id}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-student-id="${r.student_id}"><div><div class="student-name">${esc(r.student_name || "Nome não informado")}${formatDuration(r.present, r.duration)}</div><div class="small">${esc(r.device_id)}</div></div>${badgeHtml(r.present)}${rowActionsHtml(r, "roster")}</div>`,
+      (r) => {
+        const checkedOutClass = r.checked_out_at ? "checked-out" : "";
+        return `<div class="table-row roster-row ${checkedOutClass}" data-attendance-id="${r.attendance_id}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-student-id="${r.student_id}"><div><div class="student-name">${esc(r.student_name || "Nome não informado")}${formatDuration(r.present, r.duration_percentage)}</div><div class="small">${esc(r.device_id)}</div></div>${badgeHtml(r.present)}${rowActionsHtml(r, "roster")}</div>`;
+      }
     )
     .join("");
   if (state.kbd.active && state.kbd.context === "roster")
@@ -226,6 +225,7 @@ function renderStudents() {
         </div>
         <button class="mini" data-edit-student="${s.id}" data-name="${esc(s.name || "")}">Editar nome</button>
         <div class="row-actions">
+          <button class="mini" data-merge-student="${s.id}" data-name="${esc(s.name || "")}">Mesclar</button>
           <button class="mini" data-device-student="${s.id}" data-device="${esc(s.device_id)}">Trocar device</button>
           <button class="mini ${enrolledIds.has(s.id) ? "absent" : "present"}" data-enroll-student="${s.id}" data-enrolled="${enrolledIds.has(s.id)}">${enrolledIds.has(s.id) ? "Remover da turma" : "Matricular"}</button>
         </div>
@@ -271,8 +271,10 @@ async function reviewSession(id, date) {
   $("#history-roster-list").innerHTML = rows.length
     ? rows
       .map(
-        (r) =>
-          `<div class="table-row roster-row" data-attendance-id="${r.attendance_id}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-student-id="${r.student_id}"><div><div class="student-name">${esc(r.student_name || "Nome não informado")}${formatDuration(r.present, r.duration)}</div><div class="small">${esc(r.device_id)}</div></div>${badgeHtml(r.present)}${rowActionsHtml(r, "history")}</div>`,
+        (r) => {
+          const checkedOutClass = r.checked_out_at ? "checked-out" : "";
+          return `<div class="table-row roster-row ${checkedOutClass}" data-attendance-id="${r.attendance_id}" data-class-id="${state.selectedClass}" data-device-id="${r.device_id}" data-student-id="${r.student_id}"><div><div class="student-name">${esc(r.student_name || "Nome não informado")}${formatDuration(r.present, r.duration_percentage)}</div><div class="small">${esc(r.device_id)}</div></div>${badgeHtml(r.present)}${rowActionsHtml(r, "history")}</div>`;
+        }
       )
       .join("")
     : '<div class="empty">Nenhum estudante nesta chamada.</div>';
@@ -478,6 +480,37 @@ function promptModal(title, text, value = "") {
   });
 }
 
+function promptMergeModal(targetId, targetName) {
+  const dialog = $("#merge-modal");
+  $("#merge-target-name").textContent = targetName;
+  const select = $("#merge-source-select");
+  const otherStudents = (state._students || []).filter(s => s.id !== Number(targetId));
+  
+  if (otherStudents.length === 0) {
+    select.innerHTML = '<option value="">Nenhum outro estudante cadastrado</option>';
+  } else {
+    otherStudents.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    select.innerHTML = otherStudents
+      .map(s => `<option value="${s.id}">${esc(s.name || "Nome não informado")} (${esc(s.device_id)})</option>`)
+      .join("");
+  }
+  
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener(
+      "close",
+      () => {
+        resolve(
+          dialog.returnValue === "default" && select.value
+            ? Number(select.value)
+            : null
+        );
+      },
+      { once: true }
+    );
+  });
+}
+
 document.addEventListener("click", async (event) => {
   const nav = event.target.closest("[data-view]");
   if (nav) return showView(nav.dataset.view);
@@ -492,6 +525,32 @@ document.addEventListener("click", async (event) => {
       attendance.getAttribute("data-status"),
     ).catch((e) => toast(e.message, true));
 
+  const checkoutBtn = event.target.closest(".checkout-btn");
+  if (checkoutBtn) {
+    const studentId = Number(checkoutBtn.dataset.studentId);
+    const checkout = checkoutBtn.dataset.checkout === "true";
+    const context = checkoutBtn.dataset.context;
+    const sessionId = context === "history" ? state._historySessionId : state.activeSession;
+    try {
+      await api(`/session/${sessionId}/students/${studentId}/checkout`, {
+        method: "PUT",
+        body: JSON.stringify({ checkout })
+      });
+      if (context === "history") {
+        await reviewSession(
+          state._historySessionId,
+          $("#history-roster-title").textContent.replace("Chamada de ", ""),
+        );
+      } else {
+        await loadRoster();
+      }
+      toast(checkout ? "Saída registrada." : "Saída cancelada.");
+    } catch (e) {
+      toast(e.message, true);
+    }
+    return;
+  }
+
   const edit = event.target.closest("[data-edit-student]");
   if (edit) {
     const name = await promptModal(
@@ -505,6 +564,25 @@ document.addEventListener("click", async (event) => {
         body: JSON.stringify({ name }),
       });
       await loadStudents();
+    }
+    return;
+  }
+  const mergeBtn = event.target.closest("[data-merge-student]");
+  if (mergeBtn) {
+    const targetId = Number(mergeBtn.dataset.mergeStudent);
+    const targetName = mergeBtn.dataset.name || "Nome não informado";
+    const sourceId = await promptMergeModal(targetId, targetName);
+    if (sourceId) {
+      try {
+        await api(`/students/${targetId}/merge`, {
+          method: "POST",
+          body: JSON.stringify({ source_id: sourceId }),
+        });
+        await loadStudents();
+        toast("Estudantes mesclados com sucesso.");
+      } catch (e) {
+        toast(e.message, true);
+      }
     }
     return;
   }
@@ -753,6 +831,13 @@ Promise.all([loadClasses(), loadNetwork()]).catch((error) =>
 $('#network-qr').addEventListener('click', () => window.open($('#network-qr').src, '_blank'));
 
 $("#grades-class").addEventListener("change", loadGrades);
+
+$("#modal-cancel").addEventListener("click", () => {
+  $("#modal").close("cancel");
+});
+$("#merge-cancel").addEventListener("click", () => {
+  $("#merge-modal").close("cancel");
+});
 
 document.addEventListener("change", async (event) => {
   const gradeInput = event.target.closest(".grade-input");

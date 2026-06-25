@@ -188,8 +188,22 @@
     <form method="dialog">
       <h2 id="modal-title"></h2>
       <p id="modal-text" class="muted"></p><input id="modal-input">
-      <div class="actions end"><button value="cancel" class="secondary">Cancelar</button><button id="modal-confirm"
+      <div class="actions end"><button type="button" id="modal-cancel" class="secondary">Cancelar</button><button id="modal-confirm"
           value="default" class="primary">Confirmar</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="merge-modal">
+    <form method="dialog">
+      <h2>Mesclar registros de estudante</h2>
+      <p class="muted" style="margin-bottom: 12px;">Isso consolidará todas as presenças, matrículas e notas do estudante duplicado no estudante principal, e em seguida removerá o duplicado.</p>
+      <p style="margin-bottom: 12px;">Estudante principal: <strong id="merge-target-name"></strong></p>
+      <label for="merge-source-select" style="display: block; margin-bottom: 4px;">Selecione o estudante duplicado (origem):</label>
+      <select id="merge-source-select" required style="width: 100%; margin-bottom: 16px; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg);"></select>
+      <div class="actions end">
+        <button type="button" id="merge-cancel" class="secondary">Cancelar</button>
+        <button id="merge-confirm" value="default" class="primary">Confirmar</button>
+      </div>
     </form>
   </dialog>
   <script src="/static/teacher.js"></script>
