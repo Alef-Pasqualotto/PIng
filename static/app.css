@@ -451,6 +451,55 @@ button.kbd-active {
   padding-top: 16px;
   line-height: 1.45;
 }
+.checkin-visual {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+}
+.checkin-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 22px;
+  background: #eef1f5;
+  color: #5d6878;
+  flex: 0 0 auto;
+}
+.checkin-visual p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.checkin-visual.success,
+.checkin-visual.already {
+  border-color: #9fdabd;
+  background: #e7f7ef;
+}
+.checkin-visual.success .checkin-icon,
+.checkin-visual.already .checkin-icon {
+  background: var(--green);
+  color: #fff;
+}
+.checkin-visual.already {
+  box-shadow: inset 0 0 0 2px rgba(36, 168, 107, 0.12);
+}
+.checkin-visual.warning {
+  border-color: #f1dca9;
+  background: #fff4dc;
+}
+.checkin-visual.warning .checkin-icon {
+  background: #f59e0b;
+  color: #fff;
+}
 .success-text {
   color: #18794e;
 }

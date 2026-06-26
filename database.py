@@ -346,7 +346,14 @@ def record_checkin(session_id: int, student_id: int) -> sqlite3.Row | None:
             """
             INSERT INTO attendance (session_id, student_id)
             VALUES (?, ?)
-            ON CONFLICT(session_id, student_id) DO NOTHING
+            ON CONFLICT(session_id, student_id) DO UPDATE SET
+                present = 1,
+                checked_in_at = CASE
+                    WHEN attendance.present = 1 THEN attendance.checked_in_at
+                    ELSE datetime('now')
+                END,
+                checked_out_at = NULL,
+                overridden_by_teacher = 0
             """,
             (session_id, student_id)
         )
@@ -384,6 +391,14 @@ def get_attendance_for_session(session_id: int) -> list[sqlite3.Row]:
             """,
             (class_id, session_id)
         ).fetchall()
+
+
+def get_attendance_record(session_id: int, student_id: int) -> sqlite3.Row | None:
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT * FROM attendance WHERE session_id = ? AND student_id = ?",
+            (session_id, student_id),
+        ).fetchone()
 
 
 def calculate_duration(checked_in_at: str | None, checked_out_at: str | None, is_open: int, closed_at: str | None) -> int | None:

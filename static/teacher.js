@@ -3,6 +3,7 @@ const state = {
   selectedClass: null,
   activeSession: null,
   rosterTimer: null,
+  rosterEvents: null,
   network: null,
   kbd: { active: false, context: null, index: 0 },
 };
@@ -63,6 +64,7 @@ async function loadClasses(keepSelection = true) {
 
 async function refreshSession() {
   clearInterval(state.rosterTimer);
+  closeRosterEvents();
   state.rosterTimer = null;
   state.activeSession = null;
   const cls = currentClass();
@@ -86,7 +88,8 @@ async function refreshSession() {
   $("#session-button").className = status.is_open ? "secondary" : "primary";
   if (state.activeSession) {
     await loadRoster();
-    state.rosterTimer = setInterval(loadRoster, 3000);
+    if (connectRosterEvents(state.activeSession))
+      state.rosterTimer = setInterval(loadRoster, 30000);
   } else renderRoster([]);
 }
 
@@ -1010,4 +1013,30 @@ async function updateGrade(studentId, testId, scoreVal, maxScore) {
   if (totalCell) {
     totalCell.textContent = studentSum.toFixed(1);
   }
+}
+
+function closeRosterEvents() {
+  if (state.rosterEvents) {
+    state.rosterEvents.close();
+    state.rosterEvents = null;
+  }
+}
+
+function connectRosterEvents(sessionId) {
+  if (!window.EventSource) {
+    state.rosterTimer = setInterval(loadRoster, 3000);
+    return false;
+  }
+  const source = new EventSource(`/session/${sessionId}/events`);
+  state.rosterEvents = source;
+  source.addEventListener("roster", () => {
+    loadRoster();
+  });
+  source.onerror = () => {
+    source.close();
+    if (state.rosterEvents === source) state.rosterEvents = null;
+    clearInterval(state.rosterTimer);
+    state.rosterTimer = setInterval(loadRoster, 3000);
+  };
+  return true;
 }

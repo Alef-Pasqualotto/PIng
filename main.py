@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 from sqlite3 import IntegrityError
 import io
+import asyncio
+import queue
 import time
 import uuid
 
@@ -10,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import database
+import attendance_events
 import network_service
 import settings
 from app_paths import log_path, resource_path
@@ -164,6 +167,8 @@ def checkin(body: CheckinBody):
     session = database.get_active_session(body.class_id)
     if session is None:
         raise HTTPException(400, "A chamada não está aberta para esta turma.")
+    existing_record = database.get_attendance_record(session["id"], student["id"])
+    already_present = existing_record is not None and existing_record["present"] == 1
     record = database.record_checkin(session["id"], student["id"])
     enrolled = database.is_enrolled(body.class_id, student["id"])
     if record is None:
@@ -174,7 +179,9 @@ def checkin(body: CheckinBody):
             "attendance_id": None,
             "is_enrolled": enrolled,
             "present": None,
+            "already_present": False,
         }
+    attendance_events.publish(session["id"], "student_checkin")
     return {
         "ok": True,
         "student_id": student["id"],
@@ -182,6 +189,7 @@ def checkin(body: CheckinBody):
         "attendance_id": record["id"],
         "is_enrolled": enrolled,
         "present": record["present"],
+        "already_present": already_present,
     }
 
 
@@ -237,6 +245,7 @@ def open_session(body: SessionOpenBody):
 def close_session(body: SessionCloseBody):
     if not database.close_session(body.session_id):
         raise HTTPException(404, "Sessão não encontrada.")
+    attendance_events.publish(body.session_id, "session_closed")
     return {"ok": True, "session_id": body.session_id}
 
 
@@ -245,6 +254,33 @@ def session_roster(session_id: int):
     if database.get_session(session_id) is None:
         raise HTTPException(404, "Sessão não encontrada.")
     return database.get_full_session_roster(session_id)
+
+
+@app.get("/session/{session_id}/events")
+async def session_events(session_id: int, request: Request):
+    if database.get_session(session_id) is None:
+        raise HTTPException(404, "Sessão não encontrada.")
+    subscriber = attendance_events.subscribe(session_id)
+
+    async def stream():
+        try:
+            yield "event: ready\ndata: {}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    message = await asyncio.to_thread(subscriber.get, True, 15)
+                    yield f"event: roster\ndata: {message}\n\n"
+                except queue.Empty:
+                    yield "event: ping\ndata: {}\n\n"
+        finally:
+            attendance_events.unsubscribe(session_id, subscriber)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/classes/{class_id}/sessions")
@@ -266,9 +302,11 @@ def override_attendance(attendance_id: int, body: AttendanceOverrideBody):
         record = database.set_student_attendance(session["id"], student["id"], body.present)
         if record is None:
             raise HTTPException(404, "Sessão ou matrícula não encontrada.")
+        attendance_events.publish(session["id"], "attendance_override")
         return {"ok": True, "attendance_id": record["id"], "present": body.present}
     elif not database.override_attendance(attendance_id, body.present):
         raise HTTPException(404, "Presença não encontrada.")
+    # The teacher UI also updates locally, but publish for any other open dashboard.
     return {"ok": True, "attendance_id": attendance_id, "present": body.present}
 
 
@@ -277,6 +315,7 @@ def set_attendance(session_id: int, student_id: int, body: SetAttendanceBody):
     record = database.set_student_attendance(session_id, student_id, body.present)
     if record is None:
         raise HTTPException(404, "Sessão ou matrícula não encontrada.")
+    attendance_events.publish(session_id, "attendance_override")
     return {"ok": True, "attendance_id": record["id"], "present": body.present}
 
 
@@ -285,6 +324,7 @@ def student_checkout(session_id: int, student_id: int, body: CheckoutBody):
     if database.get_session(session_id) is None:
         raise HTTPException(404, "Sessão não encontrada.")
     database.record_checkout(session_id, student_id, body.checkout)
+    attendance_events.publish(session_id, "checkout_changed")
     return {"ok": True}
 
 

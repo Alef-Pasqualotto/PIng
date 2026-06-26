@@ -2,6 +2,10 @@ const select = document.querySelector('#class-select');
 const button = document.querySelector('#checkin-button');
 const stateBox = document.querySelector('#session-state');
 const message = document.querySelector('#student-message');
+const checkinVisual = document.querySelector('#checkin-visual');
+const checkinIcon = document.querySelector('#checkin-icon');
+const checkinTitle = document.querySelector('#checkin-title');
+const checkinDetail = document.querySelector('#checkin-detail');
 const deviceText = document.querySelector('#student-device');
 const absencesBtn = document.querySelector('#view-absences-button');
 const absencesDialog = document.querySelector('#absences-dialog');
@@ -43,7 +47,7 @@ async function loadClasses() {
 async function updateStatus() {
   message.textContent = '';
   if (!select.value) {
-    stateBox.className = 'status neutral'; stateBox.textContent = 'Selecione uma turma.'; button.disabled = true; absencesBtn.disabled = true; return;
+    stateBox.className = 'status neutral'; stateBox.textContent = 'Selecione uma turma.'; button.disabled = true; absencesBtn.disabled = true; setVisual('neutral', '•', 'Aguardando confirmação', 'Selecione uma turma para começar.'); return;
   }
   try {
     const data = await api(`/session/status?class_id=${select.value}`);
@@ -51,6 +55,7 @@ async function updateStatus() {
     stateBox.textContent = data.is_open ? 'Chamada aberta. Você já pode confirmar.' : 'A chamada ainda não está aberta.';
     button.disabled = !data.is_open;
     absencesBtn.disabled = false;
+    if (!data.is_open) setVisual('warning', '!', 'Chamada fechada', 'Aguarde o professor abrir a chamada.');
   } catch (error) { stateBox.className = 'status error'; stateBox.textContent = error.message; button.disabled = true; absencesBtn.disabled = true; }
 }
 
@@ -61,10 +66,14 @@ button.addEventListener('click', async () => {
     const data = await api('/checkin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({device_id: deviceId(), class_id: Number(select.value)})});
     if (!data.is_enrolled) {
       message.className = 'message warning-text'; message.textContent = 'Seu dispositivo foi identificado, mas você ainda não está matriculado nesta turma. Avise o professor.';
+      setVisual('warning', '!', 'Dispositivo não matriculado', 'Peça ao professor para vincular este dispositivo à turma.');
+    } else if (data.already_present) {
+      message.className = 'message success-text'; message.textContent = 'Sua presença já estava confirmada.';
+      setVisual('already', '✓', 'Você já está presente', 'Não precisa confirmar de novo. O professor já recebeu sua presença.');
     } else {
       message.className = 'message success-text'; message.textContent = 'Presença confirmada. Você pode fechar esta página.';
+      setVisual('success', '✓', 'Presença confirmada', 'O professor recebeu sua confirmação agora.');
     }
-    console.log(data)
   } catch (error) { message.className = 'message error-text'; message.textContent = error.message; }
   button.textContent = 'Confirmar presença';
 });
@@ -128,5 +137,11 @@ closeAbsencesBtn.addEventListener('click', () => {
 });
 
 function escapeHtml(value) { const el = document.createElement('span'); el.textContent = value ?? ''; return el.innerHTML; }
+function setVisual(kind, icon, title, detail) {
+  checkinVisual.className = `checkin-visual ${kind}`;
+  checkinIcon.textContent = icon;
+  checkinTitle.textContent = title;
+  checkinDetail.textContent = detail;
+}
 loadClasses();
 displayDeviceId();

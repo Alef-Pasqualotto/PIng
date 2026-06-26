@@ -299,6 +299,17 @@ class TestAttendance:
         r2 = database.record_checkin(session["id"], s["id"])
         assert r1["id"] == r2["id"]
 
+    def test_record_checkin_existing_absent_becomes_present(self):
+        import database
+        cls = make_class()
+        s = make_enrolled_student(cls["id"])
+        session = database.open_session(cls["id"])
+        absent = database.set_student_attendance(session["id"], s["id"], 0)
+        checked_in = database.record_checkin(session["id"], s["id"])
+        assert checked_in["id"] == absent["id"]
+        assert checked_in["present"] == 1
+        assert checked_in["overridden_by_teacher"] == 0
+
     def test_checkin_invalid_session_returns_none(self):
         import database
         s = make_student()
@@ -426,6 +437,33 @@ class TestStudentRoutes:
         data = r.json()
         assert data["ok"] is True
         assert data["is_enrolled"] is True
+        assert data["already_present"] is False
+
+    def test_checkin_when_already_present_returns_visual_state(self, client):
+        import database
+        cls = make_class()
+        make_enrolled_student(cls["id"], "already-device")
+        database.open_session(cls["id"])
+        first = client.post("/checkin", json={"device_id": "already-device", "class_id": cls["id"]})
+        second = client.post("/checkin", json={"device_id": "already-device", "class_id": cls["id"]})
+        assert first.status_code == 200
+        assert first.json()["already_present"] is False
+        assert second.status_code == 200
+        assert second.json()["already_present"] is True
+
+    def test_checkin_publishes_roster_update(self, client):
+        import attendance_events
+        import database
+        cls = make_class()
+        make_enrolled_student(cls["id"], "pub-device")
+        session = database.open_session(cls["id"])
+        subscriber = attendance_events.subscribe(session["id"])
+        try:
+            r = client.post("/checkin", json={"device_id": "pub-device", "class_id": cls["id"]})
+            assert r.status_code == 200
+            assert "student_checkin" in subscriber.get(timeout=1)
+        finally:
+            attendance_events.unsubscribe(session["id"], subscriber)
 
     def test_checkin_no_open_session(self, client):
         import database
